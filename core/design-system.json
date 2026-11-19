@@ -1,0 +1,54 @@
+{
+    "design_system": {
+        "name": "CoreX Design Language",
+        "version": "1.0",
+        "style": "Modern Minimal Futuristic"
+    },
+
+    "colors": {
+        "background": "#080B12",
+        "surface": "#111827",
+        "surface_secondary": "#1B2233",
+        "primary": "#7657FF",
+        "secondary": "#22D3EE",
+        "text_primary": "#FFFFFF",
+        "text_secondary": "#A1A1AA",
+        "success": "#22C55E",
+        "warning": "#F59E0B",
+        "error": "#EF4444"
+    },
+
+    "typography": {
+        "font_family": "Roboto",
+        "heading_weight": 700,
+        "body_weight": 400,
+        "button_weight": 600
+    },
+
+    "components": {
+        "buttons": {
+            "style": "flat",
+            "border_radius": 14
+        },
+        "cards": {
+            "border_radius": 20,
+            "background": "#111827"
+        },
+        "icons": {
+            "style": "minimal",
+            "rounded": true
+        }
+    },
+
+    "animations": {
+        "enabled": true,
+        "transition": "smooth",
+        "duration_ms": 250
+    },
+
+    "display": {
+        "responsive": true,
+        "orientation": "portrait",
+        "adaptive_layout": true
+    }
+}

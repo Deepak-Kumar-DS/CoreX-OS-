@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#080B12">
+<title>CoreX OS</title>
+
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background: #080B12;
+    color: white;
+    min-height: 100vh;
+}
+
+.phone {
+    min-height: 100vh;
+    max-width: 480px;
+    margin: auto;
+    padding: 25px;
+    position: relative;
+    overflow: hidden;
+
+    background:
+        radial-gradient(circle at 15% 20%, #39256b 0%, transparent 38%),
+        radial-gradient(circle at 90% 75%, #123c53 0%, transparent 40%),
+        #080B12;
+}
+
+.status-bar {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    color: #d1d5e5;
+}
+
+.brand {
+    margin-top: 75px;
+}
+
+.brand small {
+    color: #a99aff;
+    letter-spacing: 5px;
+    font-size: 11px;
+}
+
+.brand h1 {
+    font-size: 48px;
+    margin-top: 12px;
+    letter-spacing: -3px;
+}
+
+.brand h1 span {
+    color: #8975ff;
+}
+
+.brand p {
+    margin-top: 8px;
+    color: #a1a1aa;
+    font-size: 13px;
+}
+
+.clock {
+    margin-top: 65px;
+}
+
+.clock h2 {
+    font-size: 68px;
+    font-weight: 300;
+    letter-spacing: -4px;
+}
+
+.clock p {
+    color: #a1a1aa;
+    margin-top: 8px;
+}
+
+.search {
+    margin-top: 35px;
+    padding: 17px;
+    background: #ffffff10;
+    border: 1px solid #ffffff20;
+    border-radius: 16px;
+    color: #aaaec1;
+    cursor: pointer;
+}
+
+.section-heading {
+    margin: 35px 0 20px;
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: #aaaec1;
+}
+
+.app-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 25px 10px;
+}
+
+.app {
+    text-align: center;
+    cursor: pointer;
+}
+
+.app-icon {
+    width: 55px;
+    height: 55px;
+    margin: auto;
+    border-radius: 18px;
+    background: #ffffff13;
+    border: 1px solid #ffffff20;
+    display: grid;
+    place-items: center;
+    font-size: 23px;
+    transition: 0.2s;
+}
+
+.app:active .app-icon {
+    transform: scale(0.9);
+    background: #7657ff55;
+}
+
+.app p {
+    margin-top: 9px;
+    font-size: 11px;
+    color: #d4d4df;
+}
+
+.dock {
+    position: absolute;
+    bottom: 25px;
+    left: 25px;
+    right: 25px;
+    padding: 14px;
+    display: flex;
+    justify-content: space-around;
+    background: #ffffff13;
+    border: 1px solid #ffffff25;
+    border-radius: 22px;
+    backdrop-filter: blur(20px);
+}
+
+.dock .app-icon {
+    width: 48px;
+    height: 48px;
+}
+
+.toast {
+    position: fixed;
+    bottom: 110px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #27243d;
+    padding: 14px 22px;
+    border-radius: 12px;
+    font-size: 13px;
+    opacity: 0;
+    pointer-events: none;
+    transition: 0.3s;
+    white-space: nowrap;
+}
+
+.toast.show {
+    opacity: 1;
+}
+
+@media(max-height: 750px) {
+    .brand {
+        margin-top: 35px;
+    }
+
+    .clock {
+        margin-top: 30px;
+    }
+
+    .clock h2 {
+        font-size: 52px;
+    }
+
+    .search {
+        margin-top: 20px;
+    }
+
+    .section-heading {
+        margin-top: 25px;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="phone">
+
+    <div class="status-bar">
+        <span id="statusTime">--:--</span>
+        <span>● Wi-Fi &nbsp; ▰ Battery</span>
+    </div>
+
+    <div class="brand">
+        <small>WELCOME TO</small>
+        <h1>CoreX<span>.</span></h1>
+        <p>Beyond the Core.</p>
+    </div>
+
+    <div class="clock">
+        <h2 id="clock">--:--</h2>
+        <p id="date">Loading date...</p>
+    </div>
+
+    <div class="search" onclick="showMessage('Search feature coming soon')">
+        ⌕ &nbsp; Search anything...
+    </div>
+
+    <div class="section-heading">
+        YOUR APPLICATIONS
+    </div>
+
+    <div class="app-grid">
+
+        <div class="app" onclick="showMessage('Phone')">
+            <div class="app-icon">☎</div>
+            <p>Phone</p>
+        </div>
+
+        <div class="app" onclick="showMessage('Messages')">
+            <div class="app-icon">✉</div>
+            <p>Messages</p>
+        </div>
+
+        <div class="app" onclick="showMessage('Camera')">
+            <div class="app-icon">◎</div>
+            <p>Camera</p>
+        </div>
+
+        <div class="app" onclick="showMessage('Gallery')">
+            <div class="app-icon">▧</div>
+            <p>Gallery</p>
+        </div>
+
+        <div class="app" onclick="showMessage('Settings')">
+            <div class="app-icon">⚙</div>
+            <p>Settings</p>
+        </div>
+
+        <div class="app" onclick="showMessage('Files')">
+            <div class="app-icon">▤</div>
+            <p>Files</p>
+        </div>
+
+        <div class="app" onclick="showMessage('Browser')">
+            <div class="app-icon">◎</div>
+            <p>Browser</p>
+        </div>
+
+        <div class="app" onclick="showMessage('CoreX AI')">
+            <div class="app-icon">✧</div>
+            <p>CoreX AI</p>
+        </div>
+
+    </div>
+
+    <div class="dock">
+
+        <div class="app-icon" onclick="showMessage('Phone')">☎</div>
+        <div class="app-icon" onclick="showMessage('Browser')">◎</div>
+        <div class="app-icon" onclick="showMessage('CoreX AI')">✧</div>
+        <div class="app-icon" onclick="showMessage('Settings')">⚙</div>
+
+    </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+
+function updateClock() {
+
+    const now = new Date();
+
+    const time = now.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit"
+    });
+
+    document.getElementById("clock").textContent = time;
+    document.getElementById("statusTime").textContent = time;
+
+    document.getElementById("date").textContent =
+        now.toLocaleDateString("en-US", {
+            weekday: "long",
+            month: "long",
+            day: "numeric"
+        });
+}
+
+function showMessage(message) {
+
+    const toast = document.getElementById("toast");
+
+    toast.textContent = message + " — Coming Soon";
+    toast.classList.add("show");
+
+    setTimeout(() => {
+        toast.classList.remove("show");
+    }, 2000);
+}
+
+updateClock();
+setInterval(updateClock, 1000);
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,12 @@
+.gradle/
+**/build/
+**/.gradle/
+local.properties
+.env
+.env.*
+*.jks
+*.keystore
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,3187 @@
+===== APP BUILD =====
+plugins {
+    id("com.android.application")
+}
+
+android {
+    namespace = "com.corex.launcher"
+    compileSdk = 36
+    buildToolsVersion = "36.0.0"
+
+    defaultConfig {
+        applicationId = "com.corex.launcher"
+        minSdk = 23
+        targetSdk = 28
+        versionCode = 1
+        versionName = "0.1.0"
+    }
+}
+===== SETTINGS =====
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "CoreXLauncher"
+
+include(":app")
+include(":falcon")===== APP MANIFEST =====
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="false"
+        android:label="CoreX Launcher"
+        android:theme="@style/CoreXTheme"
+        android:supportsRtl="true">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+
+        </activity>
+
+    </application>
+</manifest>
+===== LAUNCHER MAIN ACTIVITY =====
+package com.corex.launcher;
+
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.ActivityNotFoundException;
+import android.content.Intent;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.os.BatteryManager;
+import android.os.Bundle;
+import android.speech.RecognizerIntent;
+import android.net.Uri;
+import android.view.Gravity;
+import android.view.View;
+import android.view.inputmethod.EditorInfo;
+import android.widget.EditText;
+import android.widget.GridLayout;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.Locale;
+
+public class MainActivity extends Activity {
+
+    private final int BLUE = Color.rgb(33, 150, 243);
+    private final int DARK_BLUE = Color.rgb(25, 118, 210);
+    private final int BACKGROUND = Color.rgb(239, 243, 247);
+    private final int WHITE = Color.WHITE;
+    private final int BLACK = Color.rgb(35, 35, 35);
+    private final int GRAY = Color.rgb(110, 110, 110);
+
+    private TextView dateText;
+    private TextView batteryText;
+    private GridLayout appGrid;
+    private EditText searchInput;
+
+    private final String[] appNames = {
+            "Phone",
+            "Messages",
+            "Camera",
+            "Gallery",
+            "Settings",
+            "Files",
+            "Browser",
+            "Falcon",
+            "CoreX AI"
+    };
+
+    private final String[] appIcons = {
+            "☎",
+            "✉",
+            "📷",
+            "▣",
+            "⚙",
+            "▤",
+            "🌐",
+            "➤",
+            "✦"
+    };
+
+    private final int[] iconColors = {
+            0xFF4CAF50,
+            0xFF2196F3,
+            0xFF607D8B,
+            0xFF9C27B0,
+            0xFF78909C,
+            0xFFFF9800,
+            0xFF03A9F4,
+            0xFF455A64,
+            0xFF3F51B5
+    };
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        getWindow().setStatusBarColor(DARK_BLUE);
+        getWindow().setNavigationBarColor(Color.BLACK);
+
+        buildHomeScreen();
+        updateInformation();
+    }
+
+    private void buildHomeScreen() {
+
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(BACKGROUND);
+
+        // CLASSIC BLUE HEADER
+
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.VERTICAL);
+        header.setPadding(dp(18), dp(12), dp(18), dp(16));
+        header.setBackgroundColor(BLUE);
+
+        LinearLayout information = new LinearLayout(this);
+        information.setOrientation(LinearLayout.HORIZONTAL);
+        information.setGravity(Gravity.CENTER_VERTICAL);
+
+        dateText = new TextView(this);
+        dateText.setTextColor(WHITE);
+        dateText.setTextSize(13);
+
+        batteryText = new TextView(this);
+        batteryText.setTextColor(WHITE);
+        batteryText.setTextSize(13);
+
+        information.addView(dateText,
+                new LinearLayout.LayoutParams(0, -2, 1));
+
+        information.addView(batteryText);
+
+        header.addView(information);
+
+        TextView title = new TextView(this);
+        title.setText("CoreX");
+        title.setTextColor(WHITE);
+        title.setTextSize(32);
+        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        title.setPadding(0, dp(18), 0, 0);
+
+        header.addView(title);
+
+        TextView subtitle = new TextView(this);
+        subtitle.setText("Beyond the Core");
+        subtitle.setTextColor(WHITE);
+        subtitle.setTextSize(13);
+
+        header.addView(subtitle);
+
+        root.addView(header);
+
+        // SEARCH FIELD
+
+        LinearLayout searchContainer = new LinearLayout(this);
+        searchContainer.setPadding(dp(14), dp(12), dp(14), dp(5));
+
+        searchInput = new EditText(this);
+        searchInput.setSingleLine(true);
+        searchInput.setTextSize(14);
+        searchInput.setHint("Search applications...");
+        searchInput.setPadding(dp(14), dp(10), dp(14), dp(10));
+        searchInput.setBackground(roundRect(WHITE, 6));
+        searchInput.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
+
+        searchContainer.addView(searchInput,
+                new LinearLayout.LayoutParams(-1, dp(46)));
+
+        root.addView(searchContainer);
+
+        // APP SECTION
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(12), dp(8), dp(12), dp(12));
+
+        TextView heading = new TextView(this);
+        heading.setText("Applications");
+        heading.setTextColor(BLACK);
+        heading.setTextSize(18);
+        heading.setTypeface(null, Typeface.BOLD);
+        heading.setPadding(dp(5), dp(10), 0, dp(12));
+
+        content.addView(heading);
+
+        appGrid = new GridLayout(this);
+        appGrid.setColumnCount(3);
+        appGrid.setAlignmentMode(GridLayout.ALIGN_BOUNDS);
+
+        content.addView(appGrid);
+
+        scroll.addView(content);
+
+        root.addView(scroll,
+                new LinearLayout.LayoutParams(0, 0, 1));
+
+        // PERMANENT DEVELOPER FOOTER
+
+        LinearLayout footer = new LinearLayout(this);
+        footer.setOrientation(LinearLayout.VERTICAL);
+        footer.setGravity(Gravity.CENTER);
+        footer.setPadding(dp(8), dp(10), dp(8), dp(10));
+        footer.setBackgroundColor(WHITE);
+
+        View divider = new View(this);
+        divider.setBackgroundColor(0xFFD5D5D5);
+
+        root.addView(divider,
+                new LinearLayout.LayoutParams(-1, dp(1)));
+
+        TextView credit = new TextView(this);
+        credit.setText(
+                "CoreX OS  |  Genesis 1.0\n" +
+                "Developed by Deepak Kumar Sharma"
+        );
+
+        credit.setTextColor(GRAY);
+        credit.setTextSize(11);
+        credit.setGravity(Gravity.CENTER);
+
+        footer.addView(credit);
+
+        root.addView(footer);
+
+        setContentView(root);
+
+        renderApps("");
+
+        searchInput.addTextChangedListener(
+                new android.text.TextWatcher() {
+
+                    @Override
+                    public void beforeTextChanged(
+                            CharSequence s, int start,
+                            int count, int after) {
+                    }
+
+                    @Override
+                    public void onTextChanged(
+                            CharSequence s, int start,
+                            int before, int count) {
+
+                        renderApps(s.toString());
+                    }
+
+                    @Override
+                    public void afterTextChanged(
+                            android.text.Editable s) {
+                    }
+                }
+        );
+    }
+
+    // DISPLAY APPLICATIONS
+
+    private void renderApps(String filter) {
+
+        appGrid.removeAllViews();
+
+        for (int i = 0; i < appNames.length; i++) {
+
+            final String name = appNames[i];
+
+            if (!name.toLowerCase(Locale.ROOT)
+                    .contains(filter.toLowerCase(Locale.ROOT))) {
+                continue;
+            }
+
+            LinearLayout item = new LinearLayout(this);
+            item.setOrientation(LinearLayout.VERTICAL);
+            item.setGravity(Gravity.CENTER);
+            item.setPadding(dp(5), dp(12), dp(5), dp(12));
+
+            TextView icon = new TextView(this);
+            icon.setText(appIcons[i]);
+            icon.setTextColor(WHITE);
+            icon.setTextSize(25);
+            icon.setGravity(Gravity.CENTER);
+            icon.setBackground(roundRect(iconColors[i], 12));
+
+            item.addView(icon,
+                    new LinearLayout.LayoutParams(dp(58), dp(58)));
+
+            TextView label = new TextView(this);
+            label.setText(name);
+            label.setTextColor(BLACK);
+            label.setTextSize(12);
+            label.setGravity(Gravity.CENTER);
+            label.setPadding(0, dp(7), 0, 0);
+
+            item.addView(label);
+
+            item.setOnClickListener(v -> openApp(name));
+
+            GridLayout.LayoutParams params =
+                    new GridLayout.LayoutParams();
+
+            params.width = 0;
+            params.height = -2;
+            params.columnSpec = GridLayout.spec(
+                    GridLayout.UNDEFINED, 1f);
+
+            appGrid.addView(item, params);
+        }
+    }
+
+    // OPEN APPLICATIONS
+
+    private void openApp(String name) {
+
+        try {
+
+            Intent intent;
+
+            switch (name) {
+
+                case "Phone":
+                    intent = new Intent(Intent.ACTION_DIAL);
+                    break;
+
+                case "Messages":
+                    intent = new Intent(Intent.ACTION_SENDTO);
+                    intent.setData(Uri.parse("smsto:"));
+                    break;
+
+                case "Camera":
+                    intent = new Intent(
+                            android.provider.MediaStore
+                                    .ACTION_IMAGE_CAPTURE);
+                    break;
+
+                case "Gallery":
+                    intent = new Intent(Intent.ACTION_GET_CONTENT);
+                    intent.setType("image/*");
+                    intent = Intent.createChooser(
+                            intent, "Choose Image");
+                    break;
+
+                case "Settings":
+                    intent = new Intent(
+                            android.provider.Settings.ACTION_SETTINGS);
+                    break;
+
+                case "Files":
+                    intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                    intent.setType("*/*");
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent = Intent.createChooser(
+                            intent, "Choose File");
+                    break;
+
+                case "Browser":
+                    openBrowser();
+                    return;
+
+                case "Falcon":
+                    openFalcon();
+                    return;
+
+                case "CoreX AI":
+                    openCoreXAI();
+                    return;
+
+                default:
+                    return;
+            }
+
+            startActivity(intent);
+
+        } catch (ActivityNotFoundException e) {
+
+            Toast.makeText(this,
+                    name + " is not available",
+                    Toast.LENGTH_SHORT).show();
+
+        } catch (Exception e) {
+
+            Toast.makeText(this,
+                    "Unable to open " + name,
+                    Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    // FALCON
+
+    private void openFalcon() {
+
+        Intent intent = getPackageManager()
+                .getLaunchIntentForPackage("com.corex.falcon");
+
+        if (intent != null) {
+            startActivity(intent);
+        } else {
+            Toast.makeText(this,
+                    "Falcon is not installed",
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+
+    // BROWSER
+
+    private void openBrowser() {
+
+        try {
+            Intent intent = new Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("https://www.google.com"));
+
+            startActivity(intent);
+
+        } catch (Exception e) {
+            Toast.makeText(this,
+                    "No browser available",
+                    Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    // COREX AI ASSISTANT
+
+    private void openCoreXAI() {
+
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(18), dp(8), dp(18), dp(5));
+
+        TextView description = new TextView(this);
+        description.setText(
+                "Hello! I am CoreX AI.\n\n" +
+                "You can type a command or use voice input."
+        );
+        description.setTextColor(BLACK);
+        description.setTextSize(14);
+
+        box.addView(description);
+
+        EditText commandInput = new EditText(this);
+        commandInput.setHint("Enter your command...");
+        commandInput.setSingleLine(true);
+
+        box.addView(commandInput);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("CoreX AI")
+                .setView(box)
+                .setPositiveButton("Run", null)
+                .setNeutralButton("Voice", null)
+                .setNegativeButton("Close", null)
+                .create();
+
+        dialog.setOnShowListener(v -> {
+
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                    .setOnClickListener(button -> {
+
+                        String command = commandInput
+                                .getText().toString().trim();
+
+                        if (!command.isEmpty()) {
+                            dialog.dismiss();
+                            executeAICommand(command);
+                        }
+                    });
+
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL)
+                    .setOnClickListener(button -> {
+
+                        dialog.dismiss();
+                        startVoiceRecognition();
+                    });
+        });
+
+        dialog.show();
+    }
+
+    // VOICE INPUT
+
+    private void startVoiceRecognition() {
+
+        try {
+
+            Intent intent = new Intent(
+                    RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+
+            intent.putExtra(
+                    RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+
+            intent.putExtra(
+                    RecognizerIntent.EXTRA_LANGUAGE,
+                    Locale.getDefault());
+
+            intent.putExtra(
+                    RecognizerIntent.EXTRA_PROMPT,
+                    "Speak your command");
+
+            startActivityForResult(intent, 101);
+
+        } catch (Exception e) {
+
+            Toast.makeText(this,
+                    "Voice recognition is not available",
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(
+            int requestCode, int resultCode, Intent data) {
+
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if (requestCode == 101 &&
+                resultCode == RESULT_OK &&
+                data != null) {
+
+            ArrayList<String> results =
+                    data.getStringArrayListExtra(
+                            RecognizerIntent.EXTRA_RESULTS);
+
+            if (results != null && !results.isEmpty()) {
+                executeAICommand(results.get(0));
+            }
+        }
+    }
+
+    // COMMAND PROCESSING
+
+    private void executeAICommand(String command) {
+
+        String c = command.toLowerCase(Locale.ROOT);
+
+        if (c.contains("setting")) {
+            openApp("Settings");
+
+        } else if (c.contains("phone") ||
+                c.contains("call")) {
+            openApp("Phone");
+
+        } else if (c.contains("message") ||
+                c.contains("sms")) {
+            openApp("Messages");
+
+        } else if (c.contains("camera")) {
+            openApp("Camera");
+
+        } else if (c.contains("gallery") ||
+                c.contains("photo")) {
+            openApp("Gallery");
+
+        } else if (c.contains("file")) {
+            openApp("Files");
+
+        } else if (c.contains("browser") ||
+                c.contains("internet")) {
+            openApp("Browser");
+
+        } else if (c.contains("falcon")) {
+            openApp("Falcon");
+
+        } else if (c.contains("time") ||
+                c.contains("samay")) {
+
+            String time = new SimpleDateFormat(
+                    "hh:mm a",
+                    Locale.getDefault()).format(new Date());
+
+            showAIResult("Current time: " + time);
+
+        } else if (c.contains("date") ||
+                c.contains("tarikh")) {
+
+            String date = new SimpleDateFormat(
+                    "dd MMMM yyyy",
+                    Locale.getDefault()).format(new Date());
+
+            showAIResult("Today's date: " + date);
+
+        } else if (c.contains("battery")) {
+
+            updateInformation();
+            showAIResult("Battery: " + batteryText.getText());
+
+        } else {
+
+            showAIResult(
+                    "I could not understand this command.\n\n" +
+                    "Try: Open Settings, Open Phone, " +
+                    "Open Camera or What is the time?\n\n" +
+                    "Online AI integration is not available yet."
+            );
+        }
+    }
+
+    private void showAIResult(String message) {
+
+        new AlertDialog.Builder(this)
+                .setTitle("CoreX AI")
+                .setMessage(message)
+                .setPositiveButton("OK", null)
+                .show();
+    }
+
+    // DATE AND BATTERY
+
+    private void updateInformation() {
+
+        String date = new SimpleDateFormat(
+                "EEE, dd MMM yyyy",
+                Locale.getDefault()).format(new Date());
+
+        if (dateText != null) {
+            dateText.setText(date);
+        }
+
+        Intent status = registerReceiver(
+                null,
+                new android.content.IntentFilter(
+                        Intent.ACTION_BATTERY_CHANGED));
+
+        if (status != null && batteryText != null) {
+
+            int level = status.getIntExtra(
+                    BatteryManager.EXTRA_LEVEL, -1);
+
+            int scale = status.getIntExtra(
+                    BatteryManager.EXTRA_SCALE, -1);
+
+            if (level >= 0 && scale > 0) {
+
+                int percentage = level * 100 / scale;
+
+                batteryText.setText(percentage + "%  ▰");
+            }
+        }
+    }
+
+    // BACKGROUND
+
+    private GradientDrawable roundRect(
+            int color, int radius) {
+
+        GradientDrawable drawable =
+                new GradientDrawable();
+
+        drawable.setColor(color);
+        drawable.setCornerRadius(dp(radius));
+
+        return drawable;
+    }
+
+    // DP
+
+    private int dp(int value) {
+
+        return (int) (
+                value * getResources()
+                        .getDisplayMetrics().density + 0.5f);
+    }
+}===== FALCON MANIFEST =====
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <application
+        android:allowBackup="false"
+        android:label="Falcon"
+        android:supportsRtl="true"
+        android:theme="@style/FalconTheme">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+    </application>
+
+</manifest>===== FALCON JAVA FILES =====
+===== falcon/src/main/java/com/corex/falcon/FalconCrypto.java =====
+package com.corex.falcon;
+
+import android.content.Context;
+import android.database.Cursor;
+import android.net.Uri;
+import android.provider.OpenableColumns;
+
+import android.security.keystore.KeyGenParameterSpec;
+import android.security.keystore.KeyProperties;
+
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import javax.crypto.AEADBadTagException;
+import javax.crypto.spec.GCMParameterSpec;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.RandomAccessFile;
+
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+
+import java.security.KeyStore;
+import java.security.SecureRandom;
+
+import java.util.UUID;
+
+public final class FalconCrypto {
+
+    private static final String KEY_ALIAS = "CoreX_Falcon_AES_KEY";
+    private static final String ANDROID_KEYSTORE = "AndroidKeyStore";
+
+    private static final String TRANSFORMATION = "AES/GCM/NoPadding";
+
+    private static final byte[] MAGIC = {
+            'F', 'X', 'E', '1'
+    };
+
+    private static final int IV_LENGTH = 12;
+    private static final int TAG_LENGTH_BITS = 128;
+    private static final int MAX_FILENAME_LENGTH = 4096;
+
+    private FalconCrypto() {
+    }
+
+    private static SecretKey getOrCreateKey() throws Exception {
+
+        KeyStore keyStore = KeyStore.getInstance(ANDROID_KEYSTORE);
+        keyStore.load(null);
+
+        if (keyStore.containsAlias(KEY_ALIAS)) {
+
+            KeyStore.Entry entry =
+                    keyStore.getEntry(KEY_ALIAS, null);
+
+            if (entry instanceof KeyStore.SecretKeyEntry) {
+
+                return ((KeyStore.SecretKeyEntry) entry).getSecretKey();
+            }
+        }
+
+        KeyGenerator keyGenerator =
+                KeyGenerator.getInstance(
+                        KeyProperties.KEY_ALGORITHM_AES,
+                        ANDROID_KEYSTORE
+                );
+
+        KeyGenParameterSpec specification =
+                new KeyGenParameterSpec.Builder(
+                        KEY_ALIAS,
+                        KeyProperties.PURPOSE_ENCRYPT
+                                | KeyProperties.PURPOSE_DECRYPT
+                )
+                        .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                        .setEncryptionPaddings(
+                                KeyProperties.ENCRYPTION_PADDING_NONE
+                        )
+                        .setKeySize(256)
+                        .setRandomizedEncryptionRequired(true)
+                        .build();
+
+        keyGenerator.init(specification);
+
+        return keyGenerator.generateKey();
+    }
+
+    private static String getDisplayName(
+            Context context,
+            Uri uri
+    ) {
+
+        String name = null;
+
+        try (Cursor cursor = context.getContentResolver()
+                .query(uri, null, null, null, null)) {
+
+            if (cursor != null
+                    && cursor.moveToFirst()) {
+
+                int index = cursor.getColumnIndex(
+                        OpenableColumns.DISPLAY_NAME
+                );
+
+                if (index >= 0) {
+                    name = cursor.getString(index);
+                }
+            }
+
+        } catch (Exception ignored) {
+        }
+
+        if (name == null || name.trim().isEmpty()) {
+            name = "Falcon_File";
+        }
+
+        return sanitizeFileName(name);
+    }
+
+    private static String sanitizeFileName(String name) {
+
+        if (name == null || name.trim().isEmpty()) {
+            return "Falcon_File";
+        }
+
+        String cleaned = name.replaceAll(
+                "[\\\\/:*?\"<>|\\p{Cntrl}]",
+                "_"
+        );
+
+        cleaned = cleaned.trim();
+
+        if (cleaned.isEmpty()) {
+            return "Falcon_File";
+        }
+
+        if (cleaned.length() > 180) {
+            cleaned = cleaned.substring(0, 180);
+        }
+
+        return cleaned;
+    }
+
+    private static byte[] createAuthenticatedHeader(
+            String originalName
+    ) {
+
+        byte[] nameBytes = originalName.getBytes(
+                StandardCharsets.UTF_8
+        );
+
+        ByteBuffer buffer = ByteBuffer.allocate(
+                MAGIC.length + 4 + nameBytes.length
+        );
+
+        buffer.put(MAGIC);
+        buffer.putInt(nameBytes.length);
+        buffer.put(nameBytes);
+
+        return buffer.array();
+    }
+
+    public static File encrypt(
+            Context context,
+            Uri sourceUri
+    ) throws Exception {
+
+        if (sourceUri == null) {
+            throw new IllegalArgumentException(
+                    "Source file is missing."
+            );
+        }
+
+        String originalName = getDisplayName(
+                context,
+                sourceUri
+        );
+
+        byte[] authenticatedHeader =
+                createAuthenticatedHeader(originalName);
+
+        byte[] iv = new byte[IV_LENGTH];
+
+        SecureRandom secureRandom = new SecureRandom();
+        secureRandom.nextBytes(iv);
+
+        Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+
+        cipher.init(
+                Cipher.ENCRYPT_MODE,
+                getOrCreateKey(),
+                new GCMParameterSpec(TAG_LENGTH_BITS, iv)
+        );
+
+        // Filename metadata is authenticated by AES-GCM.
+        cipher.updateAAD(authenticatedHeader);
+
+        File vaultDirectory =
+                FalconVault.getVaultDirectory(context);
+
+        File encryptedFile = new File(
+                vaultDirectory,
+                "falcon_"
+                        + System.currentTimeMillis()
+                        + "_"
+                        + UUID.randomUUID()
+                        + ".fxe"
+        );
+
+        boolean success = false;
+
+        try (
+                InputStream input =
+                        context.getContentResolver()
+                                .openInputStream(sourceUri);
+
+                FileOutputStream output =
+                        new FileOutputStream(encryptedFile)
+        ) {
+
+            if (input == null) {
+                throw new Exception(
+                        "Unable to open selected file."
+                );
+            }
+
+            // Header
+            output.write(authenticatedHeader);
+
+            // Initialization vector
+            output.write(iv);
+
+            byte[] buffer = new byte[8192];
+
+            int bytesRead;
+
+            while ((bytesRead = input.read(buffer)) != -1) {
+
+                byte[] encryptedChunk =
+                        cipher.update(buffer, 0, bytesRead);
+
+                if (encryptedChunk != null
+                        && encryptedChunk.length > 0) {
+
+                    output.write(encryptedChunk);
+                }
+            }
+
+            // Writes final encrypted data and GCM authentication tag.
+            byte[] finalEncryptedData = cipher.doFinal();
+
+            if (finalEncryptedData.length > 0) {
+                output.write(finalEncryptedData);
+            }
+
+            output.flush();
+
+            success = true;
+
+            return encryptedFile;
+
+        } finally {
+
+            if (!success && encryptedFile.exists()) {
+                encryptedFile.delete();
+            }
+        }
+    }
+
+    public static String getOriginalFileName(
+            File encryptedFile
+    ) {
+
+        if (encryptedFile == null
+                || !encryptedFile.exists()) {
+
+            return "Unknown File";
+        }
+
+        try (
+                FileInputStream input =
+                        new FileInputStream(encryptedFile)
+        ) {
+
+            byte[] magic = new byte[MAGIC.length];
+
+            if (input.read(magic) != MAGIC.length) {
+                return "Unknown File";
+            }
+
+            for (int i = 0; i < MAGIC.length; i++) {
+
+                if (magic[i] != MAGIC[i]) {
+                    return "Unknown File";
+                }
+            }
+
+            byte[] lengthBytes = new byte[4];
+
+            if (input.read(lengthBytes) != 4) {
+                return "Unknown File";
+            }
+
+            int nameLength = ByteBuffer
+                    .wrap(lengthBytes)
+                    .getInt();
+
+            if (nameLength <= 0
+                    || nameLength > MAX_FILENAME_LENGTH) {
+
+                return "Unknown File";
+            }
+
+            byte[] nameBytes = new byte[nameLength];
+
+            int totalRead = 0;
+
+            while (totalRead < nameLength) {
+
+                int count = input.read(
+                        nameBytes,
+                        totalRead,
+                        nameLength - totalRead
+                );
+
+                if (count == -1) {
+                    return "Unknown File";
+                }
+
+                totalRead += count;
+            }
+
+            String name = new String(
+                    nameBytes,
+                    StandardCharsets.UTF_8
+            );
+
+            return sanitizeFileName(name);
+
+        } catch (Exception e) {
+
+            return "Unknown File";
+        }
+    }
+
+    public static void decrypt(
+            File encryptedFile,
+            File destinationFile
+    ) throws Exception {
+
+        if (encryptedFile == null
+                || !encryptedFile.exists()) {
+
+            throw new Exception(
+                    "Encrypted file does not exist."
+            );
+        }
+
+        if (destinationFile == null) {
+            throw new IllegalArgumentException(
+                    "Destination file is missing."
+            );
+        }
+
+        boolean success = false;
+
+        try (
+                FileInputStream input =
+                        new FileInputStream(encryptedFile);
+
+                FileOutputStream output =
+                        new FileOutputStream(destinationFile)
+        ) {
+
+            // Read and verify file signature.
+            byte[] magic = new byte[MAGIC.length];
+
+            if (input.read(magic) != MAGIC.length) {
+                throw new Exception(
+                        "Invalid Falcon encrypted file."
+                );
+            }
+
+            for (int i = 0; i < MAGIC.length; i++) {
+
+                if (magic[i] != MAGIC[i]) {
+                    throw new Exception(
+                            "Unsupported Falcon file format."
+                    );
+                }
+            }
+
+            // Read filename length.
+            byte[] lengthBytes = new byte[4];
+
+            if (input.read(lengthBytes) != 4) {
+                throw new Exception(
+                        "Encrypted file header is incomplete."
+                );
+            }
+
+            int nameLength = ByteBuffer
+                    .wrap(lengthBytes)
+                    .getInt();
+
+            if (nameLength <= 0
+                    || nameLength > MAX_FILENAME_LENGTH) {
+
+                throw new Exception(
+                        "Invalid filename metadata."
+                );
+            }
+
+            // Read original filename metadata.
+            byte[] nameBytes = new byte[nameLength];
+
+            int totalRead = 0;
+
+            while (totalRead < nameLength) {
+
+                int count = input.read(
+                        nameBytes,
+                        totalRead,
+                        nameLength - totalRead
+                );
+
+                if (count == -1) {
+                    throw new Exception(
+                            "Incomplete filename metadata."
+                    );
+                }
+
+                totalRead += count;
+            }
+
+            // Reconstruct the exact authenticated header.
+            byte[] authenticatedHeader =
+                    new byte[
+                            MAGIC.length
+                                    + 4
+                                    + nameBytes.length
+                    ];
+
+            System.arraycopy(
+                    MAGIC,
+                    0,
+                    authenticatedHeader,
+                    0,
+                    MAGIC.length
+            );
+
+            System.arraycopy(
+                    lengthBytes,
+                    0,
+                    authenticatedHeader,
+                    MAGIC.length,
+                    4
+            );
+
+            System.arraycopy(
+                    nameBytes,
+                    0,
+                    authenticatedHeader,
+                    MAGIC.length + 4,
+                    nameBytes.length
+            );
+
+            // Read initialization vector.
+            byte[] iv = new byte[IV_LENGTH];
+
+            if (input.read(iv) != IV_LENGTH) {
+                throw new Exception(
+                        "Encryption IV is missing."
+                );
+            }
+
+            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+
+            cipher.init(
+                    Cipher.DECRYPT_MODE,
+                    getOrCreateKey(),
+                    new GCMParameterSpec(TAG_LENGTH_BITS, iv)
+            );
+
+            // Verify filename metadata during GCM authentication.
+            cipher.updateAAD(authenticatedHeader);
+
+            byte[] buffer = new byte[8192];
+
+            int bytesRead;
+
+            while ((bytesRead = input.read(buffer)) != -1) {
+
+                byte[] decryptedChunk =
+                        cipher.update(buffer, 0, bytesRead);
+
+                if (decryptedChunk != null
+                        && decryptedChunk.length > 0) {
+
+                    output.write(decryptedChunk);
+                }
+            }
+
+            // Authentication tag is verified here.
+            // Tampered or corrupted files will fail.
+            byte[] finalDecryptedData = cipher.doFinal();
+
+            if (finalDecryptedData.length > 0) {
+                output.write(finalDecryptedData);
+            }
+
+            output.flush();
+
+            success = true;
+
+        } catch (Exception e) {
+
+            if (e instanceof AEADBadTagException) {
+
+                throw new SecurityException(
+                        "Falcon security verification failed. "
+                                + "File may have been modified.",
+                        e
+                );
+            }
+
+            throw e;
+
+        } finally {
+
+            if (!success && destinationFile.exists()) {
+                destinationFile.delete();
+            }
+        }
+    }
+}===== falcon/src/main/java/com/corex/falcon/FalconIdentity.java =====
+package com.corex.falcon;
+
+import android.security.keystore.KeyGenParameterSpec;
+import android.security.keystore.KeyProperties;
+
+import android.util.Base64;
+
+import java.nio.charset.StandardCharsets;
+
+import java.security.KeyFactory;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.KeyStore;
+import java.security.MessageDigest;
+import java.security.PublicKey;
+
+import java.security.spec.MGF1ParameterSpec;
+import java.security.spec.X509EncodedKeySpec;
+
+import javax.crypto.Cipher;
+import javax.crypto.spec.OAEPParameterSpec;
+import javax.crypto.spec.PSource;
+
+public final class FalconIdentity {
+
+    private static final String KEY_ALIAS =
+            "CoreX_Falcon_Identity_RSA";
+
+    private static final String KEYSTORE =
+            "AndroidKeyStore";
+
+    private FalconIdentity() {
+    }
+
+    private static KeyPair getOrCreateIdentity() throws Exception {
+
+        KeyStore keyStore = KeyStore.getInstance(KEYSTORE);
+        keyStore.load(null);
+
+        if (keyStore.containsAlias(KEY_ALIAS)) {
+
+            KeyStore.PrivateKeyEntry entry =
+                    (KeyStore.PrivateKeyEntry)
+                            keyStore.getEntry(KEY_ALIAS, null);
+
+            return new KeyPair(
+                    entry.getCertificate().getPublicKey(),
+                    entry.getPrivateKey()
+            );
+        }
+
+        KeyPairGenerator generator =
+                KeyPairGenerator.getInstance(
+                        KeyProperties.KEY_ALGORITHM_RSA,
+                        KEYSTORE
+                );
+
+        KeyGenParameterSpec specification =
+                new KeyGenParameterSpec.Builder(
+                        KEY_ALIAS,
+                        KeyProperties.PURPOSE_ENCRYPT
+                                | KeyProperties.PURPOSE_DECRYPT
+                )
+                        .setKeySize(3072)
+                        .setDigests(
+                                KeyProperties.DIGEST_SHA256,
+                                KeyProperties.DIGEST_SHA512
+                        )
+                        .setEncryptionPaddings(
+                                KeyProperties.ENCRYPTION_PADDING_RSA_OAEP
+                        )
+                        .setRandomizedEncryptionRequired(true)
+                        .build();
+
+        generator.initialize(specification);
+
+        return generator.generateKeyPair();
+    }
+
+    public static String getPublicKey() throws Exception {
+
+        PublicKey publicKey =
+                getOrCreateIdentity().getPublic();
+
+        return Base64.encodeToString(
+                publicKey.getEncoded(),
+                Base64.NO_WRAP
+        );
+    }
+
+    public static String getFingerprint() throws Exception {
+
+        byte[] publicKey =
+                getOrCreateIdentity()
+                        .getPublic()
+                        .getEncoded();
+
+        byte[] digest = MessageDigest
+                .getInstance("SHA-256")
+                .digest(publicKey);
+
+        StringBuilder result = new StringBuilder();
+
+        for (byte value : digest) {
+
+            result.append(
+                    String.format("%02X", value & 0xFF)
+            );
+        }
+
+        return result.toString();
+    }
+
+    public static byte[] encryptForRecipient(
+            byte[] data,
+            String recipientPublicKey
+    ) throws Exception {
+
+        if (data == null || data.length == 0) {
+            throw new IllegalArgumentException(
+                    "Encryption data is empty."
+            );
+        }
+
+        if (recipientPublicKey == null
+                || recipientPublicKey.trim().isEmpty()) {
+
+            throw new IllegalArgumentException(
+                    "Recipient public key is missing."
+            );
+        }
+
+        byte[] decodedKey = Base64.decode(
+                recipientPublicKey,
+                Base64.DEFAULT
+        );
+
+        PublicKey publicKey = KeyFactory
+                .getInstance("RSA")
+                .generatePublic(
+                        new X509EncodedKeySpec(decodedKey)
+                );
+
+        Cipher cipher = Cipher.getInstance(
+                "RSA/ECB/OAEPWithSHA-256AndMGF1Padding"
+        );
+
+        OAEPParameterSpec parameters =
+                new OAEPParameterSpec(
+                        "SHA-256",
+                        "MGF1",
+                        MGF1ParameterSpec.SHA1,
+                        PSource.PSpecified.DEFAULT
+                );
+
+        cipher.init(
+                Cipher.ENCRYPT_MODE,
+                publicKey,
+                parameters
+        );
+
+        return cipher.doFinal(data);
+    }
+
+    public static byte[] decryptForSelf(
+            byte[] encryptedData
+    ) throws Exception {
+
+        if (encryptedData == null
+                || encryptedData.length == 0) {
+
+            throw new IllegalArgumentException(
+                    "Encrypted data is empty."
+            );
+        }
+
+        Cipher cipher = Cipher.getInstance(
+                "RSA/ECB/OAEPWithSHA-256AndMGF1Padding"
+        );
+
+        OAEPParameterSpec parameters =
+                new OAEPParameterSpec(
+                        "SHA-256",
+                        "MGF1",
+                        MGF1ParameterSpec.SHA1,
+                        PSource.PSpecified.DEFAULT
+                );
+
+        cipher.init(
+                Cipher.DECRYPT_MODE,
+                getOrCreateIdentity().getPrivate(),
+                parameters
+        );
+
+        return cipher.doFinal(encryptedData);
+    }
+
+    public static boolean verifyFingerprint(
+            String publicKeyBase64,
+            String expectedFingerprint
+    ) throws Exception {
+
+        if (publicKeyBase64 == null
+                || expectedFingerprint == null) {
+
+            return false;
+        }
+
+        byte[] decodedKey = Base64.decode(
+                publicKeyBase64,
+                Base64.DEFAULT
+        );
+
+        byte[] digest = MessageDigest
+                .getInstance("SHA-256")
+                .digest(decodedKey);
+
+        StringBuilder actual = new StringBuilder();
+
+        for (byte value : digest) {
+
+            actual.append(
+                    String.format("%02X", value & 0xFF)
+            );
+        }
+
+        return MessageDigest.isEqual(
+                actual.toString().getBytes(StandardCharsets.UTF_8),
+                expectedFingerprint
+                        .replace(" ", "")
+                        .toUpperCase()
+                        .getBytes(StandardCharsets.UTF_8)
+        );
+    }
+}===== falcon/src/main/java/com/corex/falcon/FalconTransferCrypto.java =====
+package com.corex.falcon;
+
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+
+import java.nio.ByteBuffer;
+
+import java.security.SecureRandom;
+
+import java.util.Arrays;
+
+public final class FalconTransferCrypto {
+
+    private static final byte[] MAGIC = {
+            'F', 'T', 'X', '1'
+    };
+
+    private static final int AES_KEY_SIZE = 256;
+    private static final int IV_LENGTH = 12;
+    private static final int TAG_LENGTH_BITS = 128;
+
+    private static final int MAX_WRAPPED_KEY_LENGTH = 1024;
+
+    private static final String TRANSFORMATION =
+            "AES/GCM/NoPadding";
+
+    private FalconTransferCrypto() {
+    }
+
+    private static SecretKey generateAESKey() throws Exception {
+
+        KeyGenerator generator =
+                KeyGenerator.getInstance("AES");
+
+        generator.init(AES_KEY_SIZE);
+
+        return generator.generateKey();
+    }
+
+    private static byte[] generateIV() {
+
+        byte[] iv = new byte[IV_LENGTH];
+
+        new SecureRandom().nextBytes(iv);
+
+        return iv;
+    }
+
+    /**
+     * Encrypts a file for a recipient.
+     *
+     * The recipient's RSA public key protects
+     * the randomly generated AES key.
+     */
+    public static void encryptForRecipient(
+            File sourceFile,
+            File destinationFile,
+            String recipientPublicKey
+    ) throws Exception {
+
+        if (sourceFile == null
+                || !sourceFile.isFile()
+                || !sourceFile.canRead()) {
+
+            throw new Exception(
+                    "Source file is unavailable."
+            );
+        }
+
+        if (destinationFile == null) {
+            throw new IllegalArgumentException(
+                    "Destination file is missing."
+            );
+        }
+
+        if (recipientPublicKey == null
+                || recipientPublicKey.trim().isEmpty()) {
+
+            throw new IllegalArgumentException(
+                    "Recipient public key is missing."
+            );
+        }
+
+        SecretKey aesKey = generateAESKey();
+
+        byte[] wrappedKey =
+                FalconIdentity.encryptForRecipient(
+                        aesKey.getEncoded(),
+                        recipientPublicKey
+                );
+
+        if (wrappedKey.length == 0
+                || wrappedKey.length > MAX_WRAPPED_KEY_LENGTH) {
+
+            throw new Exception(
+                    "Invalid encrypted AES key."
+            );
+        }
+
+        byte[] iv = generateIV();
+
+        ByteBuffer headerBuffer = ByteBuffer.allocate(
+                MAGIC.length
+                        + 4
+                        + wrappedKey.length
+                        + IV_LENGTH
+        );
+
+        headerBuffer.put(MAGIC);
+        headerBuffer.putInt(wrappedKey.length);
+        headerBuffer.put(wrappedKey);
+        headerBuffer.put(iv);
+
+        byte[] authenticatedHeader =
+                headerBuffer.array();
+
+        Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+
+        cipher.init(
+                Cipher.ENCRYPT_MODE,
+                aesKey,
+                new GCMParameterSpec(
+                        TAG_LENGTH_BITS,
+                        iv
+                )
+        );
+
+        cipher.updateAAD(authenticatedHeader);
+
+        boolean success = false;
+
+        try (
+                InputStream input =
+                        new FileInputStream(sourceFile);
+
+                OutputStream output =
+                        new FileOutputStream(destinationFile)
+        ) {
+
+            output.write(authenticatedHeader);
+
+            byte[] buffer = new byte[8192];
+
+            int bytesRead;
+
+            while ((bytesRead = input.read(buffer)) != -1) {
+
+                byte[] encrypted =
+                        cipher.update(
+                                buffer,
+                                0,
+                                bytesRead
+                        );
+
+                if (encrypted != null
+                        && encrypted.length > 0) {
+
+                    output.write(encrypted);
+                }
+            }
+
+            byte[] finalData = cipher.doFinal();
+
+            if (finalData.length > 0) {
+                output.write(finalData);
+            }
+
+            output.flush();
+
+            success = true;
+
+        } finally {
+
+            if (!success && destinationFile.exists()) {
+                destinationFile.delete();
+            }
+        }
+    }
+
+    /**
+     * Decrypts a file addressed to this device's
+     * Falcon RSA identity.
+     */
+    public static void decryptReceivedFile(
+            File encryptedFile,
+            File destinationFile
+    ) throws Exception {
+
+        if (encryptedFile == null
+                || !encryptedFile.isFile()
+                || !encryptedFile.canRead()) {
+
+            throw new Exception(
+                    "Encrypted file is unavailable."
+            );
+        }
+
+        if (destinationFile == null) {
+            throw new IllegalArgumentException(
+                    "Destination file is missing."
+            );
+        }
+
+        boolean success = false;
+
+        try (
+                InputStream input =
+                        new FileInputStream(encryptedFile);
+
+                OutputStream output =
+                        new FileOutputStream(destinationFile)
+        ) {
+
+            // Read file signature.
+            byte[] magic = new byte[MAGIC.length];
+
+            readFully(input, magic);
+
+            if (!Arrays.equals(magic, MAGIC)) {
+
+                throw new Exception(
+                        "Invalid Falcon transfer file."
+                );
+            }
+
+            // Read wrapped AES key length.
+            byte[] lengthBytes = new byte[4];
+
+            readFully(input, lengthBytes);
+
+            int wrappedKeyLength =
+                    ByteBuffer.wrap(lengthBytes).getInt();
+
+            if (wrappedKeyLength <= 0
+                    || wrappedKeyLength > MAX_WRAPPED_KEY_LENGTH) {
+
+                throw new Exception(
+                        "Invalid wrapped AES key."
+                );
+            }
+
+            // Read RSA encrypted AES key.
+            byte[] wrappedKey =
+                    new byte[wrappedKeyLength];
+
+            readFully(input, wrappedKey);
+
+            // Read initialization vector.
+            byte[] iv = new byte[IV_LENGTH];
+
+            readFully(input, iv);
+
+            // Reconstruct authenticated header.
+            ByteBuffer headerBuffer = ByteBuffer.allocate(
+                    MAGIC.length
+                            + 4
+                            + wrappedKey.length
+                            + IV_LENGTH
+            );
+
+            headerBuffer.put(MAGIC);
+            headerBuffer.putInt(wrappedKeyLength);
+            headerBuffer.put(wrappedKey);
+            headerBuffer.put(iv);
+
+            byte[] authenticatedHeader =
+                    headerBuffer.array();
+
+            // Recover AES key using this device's RSA identity.
+            byte[] rawAESKey =
+                    FalconIdentity.decryptForSelf(wrappedKey);
+
+            if (rawAESKey.length != 32) {
+
+                throw new SecurityException(
+                        "Invalid AES-256 key."
+                );
+            }
+
+            SecretKey aesKey = new SecretKeySpec(
+                    rawAESKey,
+                    "AES"
+            );
+
+            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+
+            cipher.init(
+                    Cipher.DECRYPT_MODE,
+                    aesKey,
+                    new GCMParameterSpec(
+                            TAG_LENGTH_BITS,
+                            iv
+                    )
+            );
+
+            cipher.updateAAD(authenticatedHeader);
+
+            byte[] buffer = new byte[8192];
+
+            int bytesRead;
+
+            while ((bytesRead = input.read(buffer)) != -1) {
+
+                byte[] decrypted =
+                        cipher.update(
+                                buffer,
+                                0,
+                                bytesRead
+                        );
+
+                if (decrypted != null
+                        && decrypted.length > 0) {
+
+                    output.write(decrypted);
+                }
+            }
+
+            // GCM authentication is verified here.
+            byte[] finalData = cipher.doFinal();
+
+            if (finalData.length > 0) {
+                output.write(finalData);
+            }
+
+            output.flush();
+
+            success = true;
+
+        } finally {
+
+            if (!success && destinationFile.exists()) {
+                destinationFile.delete();
+            }
+        }
+    }
+
+    private static void readFully(
+            InputStream input,
+            byte[] data
+    ) throws Exception {
+
+        int offset = 0;
+
+        while (offset < data.length) {
+
+            int count = input.read(
+                    data,
+                    offset,
+                    data.length - offset
+            );
+
+            if (count == -1) {
+
+                throw new Exception(
+                        "Incomplete Falcon transfer file."
+                );
+            }
+
+            offset += count;
+        }
+    }
+}===== falcon/src/main/java/com/corex/falcon/FalconVault.java =====
+package com.corex.falcon;
+
+import android.content.Context;
+
+import java.io.File;
+import java.util.Arrays;
+import java.util.Comparator;
+
+public final class FalconVault {
+
+    private FalconVault() {
+    }
+
+    public static File getVaultDirectory(Context context) throws Exception {
+
+        File directory = new File(
+                context.getFilesDir(),
+                "falcon_vault"
+        );
+
+        if (!directory.exists() && !directory.mkdirs()) {
+            throw new Exception("Falcon Vault could not be created.");
+        }
+
+        return directory.getCanonicalFile();
+    }
+
+    public static File getRecoveryDirectory(Context context) throws Exception {
+
+        File directory = new File(
+                context.getFilesDir(),
+                "falcon_recovered"
+        );
+
+        if (!directory.exists() && !directory.mkdirs()) {
+            throw new Exception("Recovery directory could not be created.");
+        }
+
+        return directory.getCanonicalFile();
+    }
+
+    public static File[] getEncryptedFiles(Context context) throws Exception {
+
+        File[] files = getVaultDirectory(context).listFiles(
+                (dir, name) -> name.endsWith(".fxe")
+        );
+
+        if (files == null) {
+            return new File[0];
+        }
+
+        Arrays.sort(
+                files,
+                Comparator.comparingLong(File::lastModified).reversed()
+        );
+
+        return files;
+    }
+
+    public static File recover(
+            Context context,
+            File encryptedFile
+    ) throws Exception {
+
+        if (encryptedFile == null || !encryptedFile.exists()) {
+            throw new Exception("Encrypted file does not exist.");
+        }
+
+        File vault = getVaultDirectory(context);
+
+        if (!encryptedFile.getCanonicalFile().getParentFile()
+                .equals(vault)) {
+            throw new SecurityException("File is outside Falcon Vault.");
+        }
+
+        File recoveredFile = new File(
+                getRecoveryDirectory(context),
+                "recovered_" + System.currentTimeMillis() + ".bin"
+        );
+
+        try {
+
+            FalconCrypto.decrypt(encryptedFile, recoveredFile);
+
+            return recoveredFile;
+
+        } catch (Exception e) {
+
+            if (recoveredFile.exists()) {
+                recoveredFile.delete();
+            }
+
+            throw e;
+        }
+    }
+
+    public static boolean deleteEncryptedFile(
+            Context context,
+            File encryptedFile
+    ) throws Exception {
+
+        if (encryptedFile == null || !encryptedFile.exists()) {
+            return false;
+        }
+
+        File vault = getVaultDirectory(context);
+
+        if (!encryptedFile.getCanonicalFile().getParentFile()
+                .equals(vault)) {
+            throw new SecurityException("Invalid Falcon Vault file.");
+        }
+
+        if (!encryptedFile.getName().endsWith(".fxe")) {
+            throw new SecurityException("Invalid encrypted file type.");
+        }
+
+        return encryptedFile.delete();
+    }
+}===== falcon/src/main/java/com/corex/falcon/MainActivity.java =====
+package com.corex.falcon;
+
+import android.Manifest;
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.media.MediaRecorder;
+import android.net.Uri;
+import android.os.Bundle;
+import android.view.Gravity;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class MainActivity extends Activity {
+
+    private static final int PICK_FILES = 100;
+    private static final int RECORD_PERMISSION = 101;
+
+    private EditText recipientInput;
+    private EditText messageInput;
+
+    private TextView attachmentList;
+    private TextView recordingStatus;
+    private TextView encryptionStatus;
+
+    private Button recordButton;
+    private Button prepareButton;
+
+    private final ArrayList<Uri> attachments = new ArrayList<>();
+    private final ArrayList<String> attachmentNames = new ArrayList<>();
+    private final ArrayList<File> encryptedFiles = new ArrayList<>();
+
+    private final ExecutorService executor =
+            Executors.newSingleThreadExecutor();
+
+    private MediaRecorder recorder;
+    private File recordingFile;
+
+    private boolean isRecording = false;
+    private boolean isEncrypting = false;
+
+    private int dp(float value) {
+        return (int) (value *
+                getResources().getDisplayMetrics().density);
+    }
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        createInterface();
+    }
+
+    private void createInterface() {
+
+        ScrollView scrollView = new ScrollView(this);
+
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(dp(18), dp(16), dp(18), dp(12));
+        root.setBackgroundColor(0xFFF2F2F2);
+
+        scrollView.addView(root);
+
+        TextView title = new TextView(this);
+        title.setText("Falcon");
+        title.setTextSize(28);
+        title.setTextColor(0xFF202124);
+        root.addView(title);
+
+        TextView subtitle = new TextView(this);
+        subtitle.setText("SECURE FILE TRANSFER");
+        subtitle.setTextSize(12);
+        subtitle.setTextColor(0xFF666666);
+        subtitle.setPadding(0, 0, 0, dp(18));
+        root.addView(subtitle);
+
+        addHeading(root, "Recipient");
+
+        recipientInput = new EditText(this);
+        recipientInput.setSingleLine(true);
+        recipientInput.setHint("Enter recipient Falcon ID");
+        root.addView(recipientInput, matchWidth());
+
+        addHeading(root, "Message (Optional)");
+
+        messageInput = new EditText(this);
+        messageInput.setHint("Write a message...");
+        messageInput.setMinLines(2);
+        messageInput.setGravity(Gravity.TOP);
+        root.addView(messageInput, matchWidth());
+
+        addHeading(root, "Attachments");
+
+        Button selectButton =
+                createButton("Select Images, Videos & Files");
+
+        root.addView(selectButton, matchWidth());
+        selectButton.setOnClickListener(v -> openFilePicker());
+
+        Button removeButton =
+                createButton("Remove All Attachments");
+
+        root.addView(removeButton, matchWidth());
+
+        removeButton.setOnClickListener(v -> {
+
+            if (isEncrypting) {
+                showToast("Encryption is in progress.");
+                return;
+            }
+
+            attachments.clear();
+            attachmentNames.clear();
+            encryptedFiles.clear();
+
+            updateAttachmentList();
+
+            encryptionStatus.setText("No files encrypted.");
+        });
+
+        attachmentList = new TextView(this);
+        attachmentList.setText("No files selected.");
+        attachmentList.setTextColor(0xFF444444);
+        attachmentList.setTextSize(14);
+        attachmentList.setPadding(dp(10), dp(12), dp(10), dp(12));
+        root.addView(attachmentList, matchWidth());
+
+        addHeading(root, "Voice Message");
+
+        recordingStatus = new TextView(this);
+        recordingStatus.setText("Not recording");
+        recordingStatus.setTextColor(0xFF555555);
+        root.addView(recordingStatus);
+
+        recordButton = createButton("Start Voice Recording");
+        root.addView(recordButton, matchWidth());
+
+        recordButton.setOnClickListener(v -> {
+
+            if (isRecording) {
+                stopVoiceRecording();
+            } else {
+                startVoiceRecording();
+            }
+        });
+
+        addHeading(root, "Local Encryption");
+
+        encryptionStatus = new TextView(this);
+        encryptionStatus.setText("No files encrypted.");
+        encryptionStatus.setTextColor(0xFF555555);
+        encryptionStatus.setTextSize(14);
+        root.addView(encryptionStatus);
+
+        prepareButton = createButton("Encrypt & Prepare Transfer");
+        root.addView(prepareButton, matchWidth());
+
+        prepareButton.setOnClickListener(v -> prepareTransfer());
+
+        // Falcon Vault Button
+        Button vaultButton = createButton("Open Falcon Vault");
+        root.addView(vaultButton, matchWidth());
+
+        vaultButton.setOnClickListener(v -> openVault());
+
+        TextView securityInfo = new TextView(this);
+
+        securityInfo.setText(
+                "\nSecurity Information\n\n" +
+                "Local encryption: AES-256-GCM\n" +
+                "Key storage: Android Keystore\n" +
+                "File authentication: GCM tag\n" +
+                "Network transfer: Not configured\n" +
+                "Device-to-device E2EE: Not implemented"
+        );
+
+        securityInfo.setTextColor(0xFF555555);
+        securityInfo.setTextSize(13);
+        securityInfo.setPadding(dp(10), dp(16), dp(10), dp(16));
+
+        root.addView(securityInfo, matchWidth());
+
+        TextView footer = new TextView(this);
+
+        footer.setText(
+                "Falcon | CoreX OS\n" +
+                "Developed by Deepak Kumar Sharma"
+        );
+
+        footer.setTextColor(0xFF555555);
+        footer.setTextSize(12);
+        footer.setGravity(Gravity.CENTER);
+        footer.setPadding(0, dp(22), 0, dp(12));
+
+        root.addView(footer, matchWidth());
+
+        setContentView(scrollView);
+    }
+
+    private void openVault() {
+
+        Intent intent = new Intent(
+                MainActivity.this,
+                VaultActivity.class
+        );
+
+        startActivity(intent);
+    }
+
+    private void addHeading(LinearLayout parent, String text) {
+
+        TextView heading = new TextView(this);
+        heading.setText(text);
+        heading.setTextSize(17);
+        heading.setTextColor(0xFF202124);
+        heading.setPadding(0, dp(18), 0, dp(8));
+
+        parent.addView(heading);
+    }
+
+    private Button createButton(String text) {
+
+        Button button = new Button(this);
+        button.setText(text);
+        button.setTextSize(14);
+        button.setAllCaps(false);
+
+        return button;
+    }
+
+    private LinearLayout.LayoutParams matchWidth() {
+
+        return new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+    }
+
+    private void showToast(String message) {
+
+        Toast.makeText(
+                this,
+                message,
+                Toast.LENGTH_SHORT
+        ).show();
+    }
+
+    private void openFilePicker() {
+
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+
+        intent.setType("*/*");
+
+        intent.putExtra(
+                Intent.EXTRA_MIME_TYPES,
+                new String[]{
+                        "image/*",
+                        "video/*",
+                        "audio/*",
+                        "application/pdf",
+                        "application/zip",
+                        "text/*",
+                        "application/*"
+                }
+        );
+
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+
+        startActivityForResult(intent, PICK_FILES);
+    }
+
+    @Override
+    protected void onActivityResult(
+            int requestCode,
+            int resultCode,
+            Intent data
+    ) {
+
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if (requestCode != PICK_FILES ||
+                resultCode != RESULT_OK ||
+                data == null) {
+            return;
+        }
+
+        if (isEncrypting) {
+            showToast("Please wait for encryption to finish.");
+            return;
+        }
+
+        if (data.getClipData() != null) {
+
+            int count = data.getClipData().getItemCount();
+
+            for (int i = 0; i < count; i++) {
+
+                Uri uri = data.getClipData()
+                        .getItemAt(i)
+                        .getUri();
+
+                addAttachment(uri);
+            }
+
+        } else if (data.getData() != null) {
+
+            addAttachment(data.getData());
+        }
+
+        encryptedFiles.clear();
+
+        encryptionStatus.setText(
+                "Files selected. Encryption pending."
+        );
+
+        updateAttachmentList();
+    }
+
+    private void addAttachment(Uri uri) {
+
+        if (attachments.contains(uri)) {
+            return;
+        }
+
+        try {
+
+            getContentResolver().takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+            );
+
+        } catch (Exception ignored) {
+        }
+
+        attachments.add(uri);
+
+        String name = uri.getLastPathSegment();
+
+        if (name == null || name.isEmpty()) {
+            name = "Selected file";
+        }
+
+        attachmentNames.add(name);
+    }
+
+    private void updateAttachmentList() {
+
+        if (attachments.isEmpty()) {
+            attachmentList.setText("No files selected.");
+            return;
+        }
+
+        StringBuilder builder = new StringBuilder();
+
+        builder.append("Selected files: ")
+                .append(attachments.size())
+                .append("\n\n");
+
+        for (int i = 0; i < attachmentNames.size(); i++) {
+
+            builder.append(i + 1)
+                    .append(". ")
+                    .append(attachmentNames.get(i))
+                    .append("\n");
+        }
+
+        attachmentList.setText(builder.toString());
+    }
+
+    private void startVoiceRecording() {
+
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+
+            requestPermissions(
+                    new String[]{Manifest.permission.RECORD_AUDIO},
+                    RECORD_PERMISSION
+            );
+
+            return;
+        }
+
+        try {
+
+            File directory = new File(
+                    getExternalFilesDir(null),
+                    "Falcon"
+            );
+
+            if (!directory.exists() && !directory.mkdirs()) {
+                throw new Exception("Cannot create recording folder");
+            }
+
+            recordingFile = new File(
+                    directory,
+                    "Voice_" + System.currentTimeMillis() + ".m4a"
+            );
+
+            recorder = new MediaRecorder();
+
+            recorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+            recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+            recorder.setOutputFile(recordingFile.getAbsolutePath());
+
+            recorder.prepare();
+            recorder.start();
+
+            isRecording = true;
+
+            recordButton.setText("Stop Voice Recording");
+            recordingStatus.setText("Recording in progress...");
+
+        } catch (Exception e) {
+
+            releaseRecorder();
+
+            showToast("Recording could not start.");
+        }
+    }
+
+    private void stopVoiceRecording() {
+
+        if (recorder == null) {
+            return;
+        }
+
+        try {
+
+            recorder.stop();
+
+            Uri audioUri = Uri.fromFile(recordingFile);
+
+            attachments.add(audioUri);
+            attachmentNames.add(recordingFile.getName());
+
+            updateAttachmentList();
+
+            encryptionStatus.setText(
+                    "Voice recording saved. Encryption pending."
+            );
+
+            recordingStatus.setText("Voice recording saved.");
+
+            showToast("Voice recording saved.");
+
+        } catch (Exception e) {
+
+            if (recordingFile != null) {
+                recordingFile.delete();
+            }
+
+            recordingStatus.setText("Recording failed.");
+
+        } finally {
+
+            releaseRecorder();
+
+            isRecording = false;
+
+            recordButton.setText("Start Voice Recording");
+        }
+    }
+
+    private void releaseRecorder() {
+
+        if (recorder != null) {
+
+            try {
+                recorder.reset();
+            } catch (Exception ignored) {
+            }
+
+            try {
+                recorder.release();
+            } catch (Exception ignored) {
+            }
+
+            recorder = null;
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(
+            int requestCode,
+            String[] permissions,
+            int[] grantResults
+    ) {
+
+        super.onRequestPermissionsResult(
+                requestCode,
+                permissions,
+                grantResults
+        );
+
+        if (requestCode == RECORD_PERMISSION) {
+
+            if (grantResults.length > 0 &&
+                    grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+
+                showToast("Permission granted. Press Record again.");
+
+            } else {
+
+                showToast("Microphone permission is required.");
+            }
+        }
+    }
+
+    private void prepareTransfer() {
+
+        if (isEncrypting) {
+            return;
+        }
+
+        String recipient = recipientInput.getText()
+                .toString()
+                .trim();
+
+        String message = messageInput.getText()
+                .toString()
+                .trim();
+
+        if (recipient.isEmpty()) {
+
+            recipientInput.setError("Enter recipient Falcon ID");
+            recipientInput.requestFocus();
+            return;
+        }
+
+        if (message.isEmpty() && attachments.isEmpty()) {
+
+            showToast("Write a message or select a file.");
+            return;
+        }
+
+        if (attachments.isEmpty()) {
+
+            new AlertDialog.Builder(this)
+                    .setTitle("Message Prepared")
+                    .setMessage(
+                            "Recipient: " + recipient +
+                            "\n\nText is ready, but network transfer " +
+                            "is not configured."
+                    )
+                    .setPositiveButton("OK", null)
+                    .show();
+
+            return;
+        }
+
+        isEncrypting = true;
+        prepareButton.setEnabled(false);
+
+        encryptionStatus.setText("Encrypting files...");
+
+        ArrayList<Uri> filesToEncrypt =
+                new ArrayList<>(attachments);
+
+        executor.execute(() -> {
+
+            ArrayList<File> results = new ArrayList<>();
+            String error = null;
+
+            try {
+
+                for (Uri uri : filesToEncrypt) {
+
+                    File encrypted = FalconCrypto.encrypt(
+                            getApplicationContext(),
+                            uri
+                    );
+
+                    results.add(encrypted);
+                }
+
+            } catch (Exception e) {
+
+                error = e.getMessage();
+
+                for (File file : results) {
+                    file.delete();
+                }
+            }
+
+            final String finalError = error;
+
+            runOnUiThread(() -> {
+
+                isEncrypting = false;
+                prepareButton.setEnabled(true);
+
+                if (finalError != null) {
+
+                    encryptionStatus.setText("Encryption failed.");
+
+                    new AlertDialog.Builder(this)
+                            .setTitle("Encryption Failed")
+                            .setMessage(
+                                    finalError == null
+                                            ? "Unknown error."
+                                            : finalError
+                            )
+                            .setPositiveButton("OK", null)
+                            .show();
+
+                    return;
+                }
+
+                encryptedFiles.clear();
+                encryptedFiles.addAll(results);
+
+                encryptionStatus.setText(
+                        encryptedFiles.size() +
+                        " file(s) encrypted successfully."
+                );
+
+                new AlertDialog.Builder(this)
+                        .setTitle("Local Encryption Complete")
+                        .setMessage(
+                                "Recipient: " + recipient +
+                                "\nAttachments encrypted: " +
+                                encryptedFiles.size() +
+                                "\n\nEncrypted copies are stored in " +
+                                "Falcon's private app storage.\n\n" +
+                                "They have NOT been sent to the recipient. " +
+                                "Network transfer and device-to-device " +
+                                "encryption are not implemented."
+                        )
+                        .setPositiveButton("OK", null)
+                        .show();
+            });
+        });
+    }
+
+    @Override
+    protected void onDestroy() {
+
+        if (isRecording) {
+
+            try {
+                recorder.stop();
+            } catch (Exception ignored) {
+            }
+
+            releaseRecorder();
+        }
+
+        executor.shutdownNow();
+
+        super.onDestroy();
+    }
+}===== falcon/src/main/java/com/corex/falcon/VaultActivity.java =====
+package com.corex.falcon;
+
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Bundle;
+import android.view.Gravity;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class VaultActivity extends Activity {
+
+    private static final int CREATE_RECOVERED_FILE = 201;
+
+    private LinearLayout fileContainer;
+    private TextView status;
+
+    private File selectedEncryptedFile;
+
+    private final ExecutorService executor =
+            Executors.newSingleThreadExecutor();
+
+    private boolean operationRunning = false;
+
+    private int dp(float value) {
+
+        return (int) (
+                value *
+                getResources().getDisplayMetrics().density
+        );
+    }
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+
+        super.onCreate(savedInstanceState);
+
+        createInterface();
+        loadFiles();
+    }
+
+    private void createInterface() {
+
+        ScrollView scroll = new ScrollView(this);
+
+        LinearLayout root = new LinearLayout(this);
+
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(dp(16), dp(16), dp(16), dp(16));
+        root.setBackgroundColor(0xFFF2F2F2);
+
+        scroll.addView(root);
+
+        TextView title = new TextView(this);
+
+        title.setText("Falcon Vault");
+        title.setTextSize(26);
+        title.setTextColor(0xFF202124);
+
+        root.addView(title);
+
+        TextView description = new TextView(this);
+
+        description.setText(
+                "Manage your encrypted files."
+        );
+
+        description.setTextSize(14);
+        description.setTextColor(0xFF666666);
+        description.setPadding(0, dp(8), 0, dp(16));
+
+        root.addView(description);
+
+        Button refresh = new Button(this);
+
+        refresh.setText("Refresh Vault");
+        refresh.setAllCaps(false);
+
+        root.addView(refresh);
+
+        refresh.setOnClickListener(v -> loadFiles());
+
+        status = new TextView(this);
+
+        status.setTextColor(0xFF444444);
+        status.setTextSize(14);
+        status.setPadding(0, dp(14), 0, dp(14));
+
+        root.addView(status);
+
+        fileContainer = new LinearLayout(this);
+
+        fileContainer.setOrientation(LinearLayout.VERTICAL);
+
+        root.addView(fileContainer);
+
+        TextView footer = new TextView(this);
+
+        footer.setText(
+                "Falcon | CoreX OS\n" +
+                "Developed by Deepak Kumar Sharma"
+        );
+
+        footer.setTextColor(0xFF666666);
+        footer.setGravity(Gravity.CENTER);
+        footer.setPadding(0, dp(24), 0, dp(12));
+
+        root.addView(footer);
+
+        setContentView(scroll);
+    }
+
+    private void loadFiles() {
+
+        if (operationRunning) {
+            return;
+        }
+
+        status.setText("Loading Falcon Vault...");
+        fileContainer.removeAllViews();
+
+        executor.execute(() -> {
+
+            File[] files;
+
+            try {
+
+                files = FalconVault.getEncryptedFiles(
+                        getApplicationContext()
+                );
+
+            } catch (Exception e) {
+
+                runOnUiThread(() ->
+                        status.setText("Unable to load Vault.")
+                );
+
+                return;
+            }
+
+            runOnUiThread(() -> {
+
+                status.setText(
+                        files.length +
+                        " encrypted file(s) found."
+                );
+
+                if (files.length == 0) {
+
+                    TextView empty = new TextView(this);
+
+                    empty.setText(
+                            "Your Falcon Vault is empty."
+                    );
+
+                    empty.setTextColor(0xFF555555);
+
+                    fileContainer.addView(empty);
+
+                    return;
+                }
+
+                for (File file : files) {
+
+                    addFileCard(file);
+                }
+            });
+        });
+    }
+
+    private void addFileCard(File file) {
+
+        LinearLayout card = new LinearLayout(this);
+
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(10), dp(8), dp(10), dp(8));
+        card.setBackgroundColor(0xFFFFFFFF);
+
+        LinearLayout.LayoutParams cardParams =
+                new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                );
+
+        cardParams.bottomMargin = dp(12);
+
+        fileContainer.addView(card, cardParams);
+
+        TextView filename = new TextView(this);
+
+        try {
+
+            filename.setText(
+                    FalconCrypto.getOriginalFileName(file)
+            );
+
+        } catch (Exception e) {
+
+            filename.setText("Unknown encrypted file");
+        }
+
+        filename.setTextSize(16);
+        filename.setTextColor(0xFF202124);
+
+        card.addView(filename);
+
+        TextView details = new TextView(this);
+
+        details.setText(
+                readableSize(file.length()) +
+                "\nEncrypted: " +
+                android.text.format.DateFormat.format(
+                        "dd MMM yyyy, hh:mm a",
+                        file.lastModified()
+                )
+        );
+
+        details.setTextSize(12);
+        details.setTextColor(0xFF666666);
+
+        card.addView(details);
+
+        Button recover = new Button(this);
+
+        recover.setText("Recover File");
+        recover.setAllCaps(false);
+
+        card.addView(recover);
+
+        recover.setOnClickListener(v ->
+                confirmRecovery(file)
+        );
+
+        Button delete = new Button(this);
+
+        delete.setText("Delete Encrypted File");
+        delete.setAllCaps(false);
+
+        card.addView(delete);
+
+        delete.setOnClickListener(v ->
+                confirmDelete(file)
+        );
+    }
+
+    private String readableSize(long bytes) {
+
+        if (bytes < 1024) {
+            return bytes + " bytes";
+        }
+
+        if (bytes < 1024 * 1024) {
+
+            return String.format(
+                    "%.1f KB",
+                    bytes / 1024.0
+            );
+        }
+
+        return String.format(
+                "%.2f MB",
+                bytes / (1024.0 * 1024.0)
+        );
+    }
+
+    private void confirmRecovery(File encryptedFile) {
+
+        if (operationRunning) {
+            return;
+        }
+
+        try {
+
+            String originalName =
+                    FalconCrypto.getOriginalFileName(encryptedFile);
+
+            new AlertDialog.Builder(this)
+                    .setTitle("Recover File")
+                    .setMessage(
+                            "Original filename: " + originalName +
+                            "\n\nDecrypt and save this file?"
+                    )
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Recover", (dialog, which) -> {
+
+                        selectedEncryptedFile = encryptedFile;
+
+                        Intent intent = new Intent(
+                                Intent.ACTION_CREATE_DOCUMENT
+                        );
+
+                        intent.addCategory(
+                                Intent.CATEGORY_OPENABLE
+                        );
+
+                        intent.setType("*/*");
+
+                        intent.putExtra(
+                                Intent.EXTRA_TITLE,
+                                originalName
+                        );
+
+                        startActivityForResult(
+                                intent,
+                                CREATE_RECOVERED_FILE
+                        );
+                    })
+                    .show();
+
+        } catch (Exception e) {
+
+            showToast("Invalid encrypted file.");
+        }
+    }
+
+    private void confirmDelete(File file) {
+
+        if (operationRunning) {
+            return;
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("Delete Encrypted File")
+                .setMessage(
+                        "Are you sure you want to permanently delete " +
+                        "this encrypted file?"
+                )
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Delete", (dialog, which) -> {
+
+                    operationRunning = true;
+
+                    executor.execute(() -> {
+
+                        boolean deleted = false;
+
+                        try {
+
+                            deleted = FalconVault.deleteEncryptedFile(
+                                    getApplicationContext(),
+                                    file
+                            );
+
+                        } catch (Exception ignored) {
+                        }
+
+                        final boolean result = deleted;
+
+                        runOnUiThread(() -> {
+
+                            operationRunning = false;
+
+                            if (result) {
+
+                                showToast("Encrypted file deleted.");
+
+                            } else {
+
+                                showToast("File could not be deleted.");
+                            }
+
+                            loadFiles();
+                        });
+                    });
+                })
+                .show();
+    }
+
+    @Override
+    protected void onActivityResult(
+            int requestCode,
+            int resultCode,
+            Intent data
+    ) {
+
+        super.onActivityResult(
+                requestCode,
+                resultCode,
+                data
+        );
+
+        if (requestCode != CREATE_RECOVERED_FILE ||
+                resultCode != RESULT_OK ||
+                data == null ||
+                data.getData() == null) {
+
+            return;
+        }
+
+        if (selectedEncryptedFile == null) {
+            return;
+        }
+
+        Uri destination = data.getData();
+
+        File encryptedFile = selectedEncryptedFile;
+
+        operationRunning = true;
+
+        status.setText("Decrypting file...");
+
+        executor.execute(() -> {
+
+            File temporaryFile = null;
+
+            String error = null;
+
+            try {
+
+                temporaryFile = new File(
+                        getCacheDir(),
+                        "recovery_" + System.nanoTime() + ".tmp"
+                );
+
+                FalconCrypto.decrypt(
+                        encryptedFile,
+                        temporaryFile
+                );
+
+                try (
+                        InputStream input =
+                                new FileInputStream(temporaryFile);
+
+                        OutputStream output =
+                                getContentResolver()
+                                        .openOutputStream(destination, "w")
+                ) {
+
+                    if (output == null) {
+                        throw new Exception(
+                                "Cannot open destination."
+                        );
+                    }
+
+                    byte[] buffer = new byte[8192];
+
+                    int count;
+
+                    while ((count = input.read(buffer)) != -1) {
+
+                        output.write(buffer, 0, count);
+                    }
+
+                    output.flush();
+                }
+
+            } catch (Exception e) {
+
+                error = e.getMessage();
+
+            } finally {
+
+                if (temporaryFile != null &&
+                        temporaryFile.exists()) {
+
+                    temporaryFile.delete();
+                }
+            }
+
+            final String finalError = error;
+
+            runOnUiThread(() -> {
+
+                operationRunning = false;
+
+                if (finalError == null) {
+
+                    status.setText("Recovery completed.");
+
+                    showToast("File recovered successfully.");
+
+                } else {
+
+                    status.setText("Recovery failed.");
+
+                    new AlertDialog.Builder(this)
+                            .setTitle("Recovery Failed")
+                            .setMessage(
+                                    "File could not be recovered. " +
+                                    "It may be damaged or the key unavailable."
+                            )
+                            .setPositiveButton("OK", null)
+                            .show();
+                }
+            });
+        });
+    }
+
+    private void showToast(String message) {
+
+        Toast.makeText(
+                this,
+                message,
+                Toast.LENGTH_SHORT
+        ).show();
+    }
+
+    @Override
+    protected void onDestroy() {
+
+        executor.shutdownNow();
+
+        super.onDestroy();
+    }
+}
