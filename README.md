@@ -80,3 +80,5 @@ Hardware compatibility, kernel sources, device trees and vendor components will 
 CoreX OS aims to put intelligence, privacy, customization and user control at the center of the mobile experience.
 
 **COREX OS — Beyond the Core.**
+
+install this APK
