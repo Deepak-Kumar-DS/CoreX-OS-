@@ -321,10 +321,7 @@ public class MainActivity extends Activity {
                     break;
 
                 case "Files":
-                    intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-                    intent.setType("*/*");
-                    intent.addCategory(Intent.CATEGORY_OPENABLE);
-                    intent = Intent.createChooser(intent, "Files");
+                    intent = new Intent(MainActivity.this, FilesActivity.class);
                     break;
 
                 case "Browser":

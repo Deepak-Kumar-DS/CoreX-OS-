@@ -17,8 +17,84 @@ if (!fs.existsSync(UPLOAD_DIR)) {
     fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
-app.use(cors());
+
+app.use(cors({
+    origin: (origin, callback) => {
+        const allowed = (process.env.CORS_ORIGINS || "")
+            .split(",").map(value => value.trim()).filter(Boolean);
+
+        if (!origin || allowed.length === 0 || allowed.includes(origin)) {
+            return callback(null, true);
+        }
+        return callback(new Error("Origin not allowed by CORS."));
+    }
+}));
+
+app.disable("x-powered-by");
+
+app.use((req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    next();
+});
+
 app.use(express.json({ limit: "2mb" }));
+
+// In-memory authentication rate limiter.
+// Use a persistent shared limiter before public production deployment.
+const rateBuckets = new Map();
+
+function createRateLimiter({ windowMs, max, message }) {
+    return (req, res, next) => {
+        const now = Date.now();
+        const key = req.ip || req.socket.remoteAddress || "unknown";
+        const bucketKey = req.path + ":" + key;
+        let bucket = rateBuckets.get(bucketKey);
+
+        if (!bucket || now >= bucket.resetAt) {
+            bucket = { count: 0, resetAt: now + windowMs };
+        }
+
+        bucket.count += 1;
+        rateBuckets.set(bucketKey, bucket);
+
+        if (rateBuckets.size > 10000) {
+            for (const [key, value] of rateBuckets) {
+                if (now >= value.resetAt) rateBuckets.delete(key);
+            }
+        }
+
+        res.setHeader("RateLimit-Limit", String(max));
+        res.setHeader("RateLimit-Remaining", String(Math.max(0, max - bucket.count)));
+        res.setHeader("RateLimit-Reset", String(Math.ceil(bucket.resetAt / 1000)));
+
+        if (bucket.count > max) {
+            return res.status(429).json({
+                success: false,
+                error: message,
+                retryAfterSeconds: Math.ceil((bucket.resetAt - now) / 1000)
+            });
+        }
+
+        next();
+    };
+}
+
+const pulseLoginLimiter = createRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 8,
+    message: "Too many login attempts. Please try again later."
+});
+
+const pulseRegisterLimiter = createRateLimiter({
+    windowMs: 60 * 60 * 1000,
+    max: 5,
+    message: "Too many registration attempts. Please try again later."
+});
+
 
 // ======================================================
 // DATABASE
@@ -542,7 +618,7 @@ app.post("/api/files/:fileId/ack", (req, res) => {
 // COREX PULSE — REGISTRATION
 // ======================================================
 
-app.post("/api/pulse/register", (req, res) => {
+app.post("/api/pulse/register", pulseRegisterLimiter, (req, res) => {
     try {
         const {
             displayName,
@@ -696,7 +772,7 @@ app.post("/api/pulse/register", (req, res) => {
 // COREX PULSE — LOGIN
 // ======================================================
 
-app.post("/api/pulse/login", (req, res) => {
+app.post("/api/pulse/login", pulseLoginLimiter, (req, res) => {
     try {
         const { identifier, password } = req.body;
 
@@ -1014,6 +1090,170 @@ app.post(
 );
 
 // ======================================================
+
+// ======================================================
+// COREX PULSE — ENCRYPTED MEDIA TRANSFER
+// ======================================================
+
+// Upload encrypted media
+app.post(
+    "/api/pulse/files",
+    authenticatePulse,
+    upload.single("file"),
+    (req, res) => {
+        try {
+            if (!req.file) {
+                return sendError(res, 400, "Encrypted file is required.");
+            }
+
+            const recipientId = String(req.body.recipientId || "");
+            const category = String(req.body.category || "document");
+
+            const allowedCategories = ["photo", "video", "document", "voice"];
+
+            const data = loadData();
+            data.pulseFiles = data.pulseFiles || [];
+
+            if (!data.pulseUsers[recipientId]) {
+                fs.unlinkSync(req.file.path);
+                return sendError(res, 404, "Recipient not found.");
+            }
+
+            if (recipientId === req.pulseUserId) {
+                fs.unlinkSync(req.file.path);
+                return sendError(res, 400, "Cannot send media to yourself.");
+            }
+
+            if (!allowedCategories.includes(category)) {
+                fs.unlinkSync(req.file.path);
+                return sendError(res, 400, "Invalid media category.");
+            }
+
+            const record = {
+                fileId: crypto.randomUUID(),
+                senderId: req.pulseUserId,
+                recipientId,
+                originalName: path.basename(
+                    String(req.body.originalName || "encrypted-file")
+                ).slice(0, 180),
+                category,
+                mimeType: String(
+                    req.body.originalMimeType || "application/octet-stream"
+                ).slice(0, 120),
+                size: req.file.size,
+                storedName: req.file.filename,
+                encrypted: true,
+                createdAt: new Date().toISOString(),
+                delivered: false
+            };
+
+            data.pulseFiles.push(record);
+            saveData(data);
+
+            return res.status(201).json({
+                success: true,
+                fileId: record.fileId,
+                status: "queued",
+                encrypted: true
+            });
+
+        } catch (error) {
+            if (req.file && fs.existsSync(req.file.path)) {
+                fs.unlinkSync(req.file.path);
+            }
+
+            console.error("Pulse media upload:", error);
+            return sendError(res, 500, "Media upload failed.");
+        }
+    }
+);
+
+// Media inbox
+app.get("/api/pulse/files/inbox", authenticatePulse, (req, res) => {
+    const data = loadData();
+
+    const files = (data.pulseFiles || [])
+        .filter(file =>
+            file.recipientId === req.pulseUserId && !file.delivered
+        )
+        .slice(0, 100)
+        .map(file => ({
+            fileId: file.fileId,
+            senderId: file.senderId,
+            originalName: file.originalName,
+            category: file.category,
+            mimeType: file.mimeType,
+            size: file.size,
+            encrypted: file.encrypted,
+            createdAt: file.createdAt
+        }));
+
+    res.json({ success: true, files });
+});
+
+// Download media
+app.get(
+    "/api/pulse/files/:fileId/download",
+    authenticatePulse,
+    (req, res) => {
+        const data = loadData();
+
+        const file = (data.pulseFiles || []).find(
+            item => item.fileId === req.params.fileId
+        );
+
+        if (!file) {
+            return sendError(res, 404, "Media not found.");
+        }
+
+        if (
+            file.senderId !== req.pulseUserId &&
+            file.recipientId !== req.pulseUserId
+        ) {
+            return sendError(res, 403, "Access denied.");
+        }
+
+        const filePath = path.join(UPLOAD_DIR, file.storedName);
+
+        if (!fs.existsSync(filePath)) {
+            return sendError(res, 404, "Stored media not found.");
+        }
+
+        res.setHeader("Content-Type", "application/octet-stream");
+        res.setHeader("Cache-Control", "no-store");
+
+        return res.download(filePath, file.fileId + ".encrypted");
+    }
+);
+
+// Delivery acknowledgement
+app.post(
+    "/api/pulse/files/:fileId/ack",
+    authenticatePulse,
+    (req, res) => {
+        const data = loadData();
+        data.pulseFiles = data.pulseFiles || [];
+
+        const file = data.pulseFiles.find(
+            item =>
+                item.fileId === req.params.fileId &&
+                item.recipientId === req.pulseUserId
+        );
+
+        if (!file) {
+            return sendError(res, 404, "Media not found.");
+        }
+
+        file.delivered = true;
+        file.deliveredAt = new Date().toISOString();
+
+        saveData(data);
+
+        return res.json({ success: true });
+    }
+);
+
+
 // ERROR HANDLER
 // ======================================================
 

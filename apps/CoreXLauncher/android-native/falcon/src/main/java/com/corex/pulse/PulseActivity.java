@@ -17,6 +17,16 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import android.content.SharedPreferences;
+import android.content.ContentResolver;
+import android.content.Intent;
+import android.database.Cursor;
+import android.net.Uri;
+import android.media.MediaRecorder;
+import android.content.pm.PackageManager;
+import android.provider.OpenableColumns;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.OutputStream;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -62,6 +72,21 @@ public class PulseActivity extends Activity {
 
     private boolean registerMode = false;
     private boolean isLoggedIn = false;
+
+    private LinearLayout mediaInboxPanel;
+
+    private static final int REQUEST_PICK_MEDIA = 4101;
+    private static final int REQUEST_SAVE_MEDIA = 4102;
+
+    private String pendingMediaCategory = "";
+    private File pendingDecryptedFile;
+    private String pendingMediaFileId = "";
+
+    private MediaRecorder voiceRecorder;
+    private File recordedVoiceFile;
+    private static final int REQUEST_RECORD_AUDIO = 4103;
+    private boolean voiceRecording = false;
+
 
     private final int BACKGROUND = Color.rgb(247, 248, 250);
     private final int SURFACE = Color.WHITE;
@@ -607,6 +632,36 @@ public class PulseActivity extends Activity {
                 button("Send Encrypted Message", this::sendMessage)
         );
 
+        messagePanel.addView(label("Send encrypted media"));
+
+        messagePanel.addView(
+                button("Choose Photo", () ->
+                        launchMediaPicker("photo", "image/*"))
+        );
+
+        messagePanel.addView(
+                button("Choose Video", () ->
+                        launchMediaPicker("video", "video/*"))
+        );
+
+        messagePanel.addView(
+                button("Choose Document", () ->
+                        launchMediaPicker("document", "*/*"))
+        );
+
+        messagePanel.addView(
+                button("Choose Voice / Audio File", () ->
+                        launchMediaPicker("voice", "audio/*"))
+        );
+
+        messagePanel.addView(
+                button("Record Voice Message", this::requestVoiceRecording)
+        );
+
+        messagePanel.addView(
+                button("Stop Recording & Send", this::stopAndSendVoice)
+        );
+
         messagePanel.addView(label("Inbox"));
 
         conversationText = new TextView(this);
@@ -619,6 +674,12 @@ public class PulseActivity extends Activity {
         );
 
         messagePanel.addView(conversationText);
+
+        messagePanel.addView(label("Received media"));
+
+        mediaInboxPanel = new LinearLayout(this);
+        mediaInboxPanel.setOrientation(LinearLayout.VERTICAL);
+        messagePanel.addView(mediaInboxPanel);
 
         messagePanel.addView(
                 button("Refresh Inbox", this::loadInbox)
@@ -759,6 +820,495 @@ public class PulseActivity extends Activity {
         });
     }
 
+
+    private void requestVoiceRecording() {
+        if (!isLoggedIn) {
+            showToast("Please login first");
+            return;
+        }
+
+        if (selectedRecipientId.isEmpty() ||
+                selectedRecipientPublicKey.isEmpty()) {
+            showToast("Search and select a recipient first");
+            return;
+        }
+
+        if (voiceRecording) {
+            showToast("A voice recording is already in progress");
+            return;
+        }
+
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(
+                    new String[]{android.Manifest.permission.RECORD_AUDIO},
+                    REQUEST_RECORD_AUDIO
+            );
+            return;
+        }
+
+        startVoiceRecording();
+    }
+
+    private void startVoiceRecording() {
+        try {
+            if (voiceRecorder != null) {
+                releaseVoiceRecorder();
+            }
+
+            recordedVoiceFile = new File(
+                    getCacheDir(),
+                    "corex-voice-" + java.util.UUID.randomUUID() + ".m4a"
+            );
+
+            voiceRecorder = new MediaRecorder();
+            voiceRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+            voiceRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+            voiceRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+            voiceRecorder.setAudioEncodingBitRate(96000);
+            voiceRecorder.setAudioSamplingRate(44100);
+            voiceRecorder.setMaxDuration(5 * 60 * 1000);
+            voiceRecorder.setMaxFileSize(20L * 1024L * 1024L);
+            voiceRecorder.setOutputFile(recordedVoiceFile.getAbsolutePath());
+
+            voiceRecorder.prepare();
+            voiceRecorder.start();
+
+            voiceRecording = true;
+            showToast("Recording started. Maximum duration: 5 minutes.");
+
+        } catch (Exception e) {
+            voiceRecording = false;
+            releaseVoiceRecorder();
+
+            if (recordedVoiceFile != null && recordedVoiceFile.exists()) {
+                recordedVoiceFile.delete();
+            }
+
+            showToast("Could not start recording: " + e.getMessage());
+        }
+    }
+
+    private void stopAndSendVoice() {
+        if (!voiceRecording || voiceRecorder == null) {
+            showToast("No voice recording is active");
+            return;
+        }
+
+        try {
+            voiceRecorder.stop();
+            voiceRecording = false;
+            releaseVoiceRecorder();
+
+            if (recordedVoiceFile == null ||
+                    !recordedVoiceFile.exists() ||
+                    recordedVoiceFile.length() < 1000) {
+                if (recordedVoiceFile != null) recordedVoiceFile.delete();
+                showToast("Recording is too short or empty");
+                return;
+            }
+
+            pendingMediaCategory = "voice";
+            Uri voiceUri = Uri.fromFile(recordedVoiceFile);
+            uploadSelectedMedia(voiceUri);
+            showToast("Voice message is being encrypted and sent.");
+
+        } catch (Exception e) {
+            voiceRecording = false;
+            releaseVoiceRecorder();
+
+            if (recordedVoiceFile != null && recordedVoiceFile.exists()) {
+                recordedVoiceFile.delete();
+            }
+
+            showToast("Could not finish recording: " + e.getMessage());
+        }
+    }
+
+    private void releaseVoiceRecorder() {
+        if (voiceRecorder != null) {
+            try {
+                voiceRecorder.reset();
+            } catch (Exception ignored) {
+            }
+
+            try {
+                voiceRecorder.release();
+            } catch (Exception ignored) {
+            }
+
+            voiceRecorder = null;
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(
+            int requestCode,
+            String[] permissions,
+            int[] grantResults
+    ) {
+        super.onRequestPermissionsResult(
+                requestCode,
+                permissions,
+                grantResults
+        );
+
+        if (requestCode == REQUEST_RECORD_AUDIO) {
+            if (grantResults.length > 0 &&
+                    grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                startVoiceRecording();
+            } else {
+                showToast("Microphone permission is required for voice messages.");
+            }
+        }
+    }
+
+    private void launchMediaPicker(String category, String mimeType) {
+        if (!isLoggedIn) {
+            showToast("Please login first");
+            return;
+        }
+
+        if (selectedRecipientId.isEmpty() ||
+                selectedRecipientPublicKey.isEmpty()) {
+            showToast("Search and select a recipient first");
+            return;
+        }
+
+        pendingMediaCategory = category;
+
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType(mimeType);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+        try {
+            startActivityForResult(intent, REQUEST_PICK_MEDIA);
+        } catch (Exception e) {
+            showToast("Unable to open file picker");
+        }
+    }
+
+    private String getDisplayName(Uri uri) {
+        String name = "media-file";
+
+        if (uri != null && "file".equals(uri.getScheme())) {
+            String path = uri.getPath();
+            if (path != null && !path.isEmpty()) {
+                name = new File(path).getName();
+            }
+            return name.replaceAll("[\\\\/:*?\"<>|]", "_");
+        }
+
+        try (Cursor cursor = getContentResolver().query(
+                uri,
+                new String[]{OpenableColumns.DISPLAY_NAME},
+                null,
+                null,
+                null
+        )) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int index = cursor.getColumnIndex(
+                        OpenableColumns.DISPLAY_NAME
+                );
+
+                if (index >= 0) {
+                    String value = cursor.getString(index);
+                    if (value != null && !value.trim().isEmpty()) {
+                        name = value;
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
+        return name.replaceAll("[\\\\/:*?\"<>|]", "_");
+    }
+
+    private void uploadSelectedMedia(Uri uri) {
+        if (uri == null) return;
+
+        final String recipientId = selectedRecipientId;
+        final String recipientKey = selectedRecipientPublicKey;
+        final String category = pendingMediaCategory;
+        final String originalName = getDisplayName(uri);
+
+        String mime = getContentResolver().getType(uri);
+        if (mime == null) mime = "application/octet-stream";
+        final String originalMime = mime;
+
+        showToast("Encrypting media...");
+
+        executor.execute(() -> {
+            File encrypted = new File(
+                    getCacheDir(),
+                    "pulse-" + java.util.UUID.randomUUID() + ".cpm"
+            );
+
+            try {
+                PulseMediaCrypto.encryptUri(
+                        getContentResolver(),
+                        uri,
+                        recipientKey,
+                        encrypted
+                );
+
+                PulseMediaRelayClient.upload(
+                        encrypted,
+                        recipientId,
+                        category,
+                        originalName,
+                        originalMime
+                );
+
+                runOnUiThread(() ->
+                        showToast("Encrypted media sent successfully")
+                );
+
+            } catch (Exception e) {
+                runOnUiThread(() ->
+                        showToast("Media send failed: " + e.getMessage())
+                );
+            } finally {
+                if (encrypted.exists()) encrypted.delete();
+            }
+        });
+    }
+
+    private void downloadAndDecryptMedia(
+            String fileId,
+            String originalName,
+            String mimeType
+    ) {
+        if (fileId == null || fileId.isEmpty()) return;
+
+        showToast("Downloading encrypted media...");
+
+        executor.execute(() -> {
+            File encrypted = new File(
+                    getCacheDir(),
+                    "pulse-download-" + java.util.UUID.randomUUID() + ".cpm"
+            );
+
+            File decrypted = new File(
+                    getCacheDir(),
+                    "pulse-open-" + java.util.UUID.randomUUID()
+            );
+
+            try {
+                PulseMediaRelayClient.download(fileId, encrypted);
+
+                PulseMediaCrypto.decryptFile(encrypted, decrypted);
+
+                runOnUiThread(() -> {
+                    pendingDecryptedFile = decrypted;
+                    pendingMediaFileId = fileId;
+
+                    Intent saveIntent = new Intent(
+                            Intent.ACTION_CREATE_DOCUMENT
+                    );
+
+                    saveIntent.addCategory(Intent.CATEGORY_OPENABLE);
+                    saveIntent.setType(
+                            mimeType == null ||
+                                    mimeType.isEmpty()
+                                    ? "application/octet-stream"
+                                    : mimeType
+                    );
+
+                    saveIntent.putExtra(
+                            Intent.EXTRA_TITLE,
+                            originalName == null ||
+                                    originalName.isEmpty()
+                                    ? "CoreX-Pulse-File"
+                                    : originalName
+                    );
+
+                    try {
+                        startActivityForResult(
+                                saveIntent,
+                                REQUEST_SAVE_MEDIA
+                        );
+                    } catch (Exception e) {
+                        pendingDecryptedFile = null;
+                        showToast("Unable to open save dialog");
+                    }
+                });
+
+            } catch (Exception e) {
+                if (decrypted.exists()) decrypted.delete();
+
+                runOnUiThread(() ->
+                        showToast("Download/decryption failed: "
+                                + e.getMessage())
+                );
+            } finally {
+                if (encrypted.exists()) encrypted.delete();
+            }
+        });
+    }
+
+    private void saveDecryptedMedia(Uri destination) {
+        File source = pendingDecryptedFile;
+        String fileId = pendingMediaFileId;
+
+        pendingDecryptedFile = null;
+        pendingMediaFileId = "";
+
+        if (source == null || !source.exists() || destination == null) {
+            if (source != null && source.exists()) source.delete();
+            showToast("Save cancelled");
+            return;
+        }
+
+        executor.execute(() -> {
+            boolean saved = false;
+
+            try (
+                    FileInputStream input = new FileInputStream(source);
+                    OutputStream output =
+                            getContentResolver().openOutputStream(destination)
+            ) {
+                if (output == null) {
+                    throw new IllegalStateException(
+                            "Unable to open destination"
+                    );
+                }
+
+                byte[] buffer = new byte[64 * 1024];
+                int count;
+
+                while ((count = input.read(buffer)) != -1) {
+                    output.write(buffer, 0, count);
+                }
+
+                output.flush();
+                saved = true;
+
+            } catch (Exception e) {
+                String error = e.getMessage();
+                runOnUiThread(() ->
+                        showToast("Save failed: " + error)
+                );
+            } finally {
+                source.delete();
+            }
+
+            if (saved && fileId != null && !fileId.isEmpty()) {
+                try {
+                    PulseMediaRelayClient.acknowledge(fileId);
+                } catch (Exception ignored) {
+                }
+
+                runOnUiThread(() ->
+                        showToast("File decrypted and saved successfully")
+                );
+            }
+        });
+    }
+
+    private void loadMediaInbox() {
+        if (!isLoggedIn || mediaInboxPanel == null) return;
+
+        executor.execute(() -> {
+            try {
+                JSONArray files = PulseMediaRelayClient.getInbox();
+
+                runOnUiThread(() -> {
+                    if (mediaInboxPanel == null) return;
+
+                    mediaInboxPanel.removeAllViews();
+
+                    if (files.length() == 0) {
+                        mediaInboxPanel.addView(
+                                label("No new media files.")
+                        );
+                        return;
+                    }
+
+                    for (int i = 0; i < files.length(); i++) {
+                        JSONObject item = files.optJSONObject(i);
+                        if (item == null) continue;
+
+                        String id = item.optString(
+                                "fileId",
+                                item.optString("id", "")
+                        );
+
+                        String name = item.optString(
+                                "originalName",
+                                "Encrypted media"
+                        );
+
+                        String category = item.optString(
+                                "category",
+                                "file"
+                        );
+
+                        String mime = item.optString(
+                                "originalMimeType",
+                                "application/octet-stream"
+                        );
+
+                        String sender = item.optString(
+                                "senderId",
+                                "Unknown sender"
+                        );
+
+                        if (id.isEmpty()) continue;
+
+                        mediaInboxPanel.addView(
+                                button(
+                                        category + " • " + name
+                                                + " • From " + sender,
+                                        () -> downloadAndDecryptMedia(
+                                                id,
+                                                name,
+                                                mime
+                                        )
+                                )
+                        );
+                    }
+                });
+
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    if (mediaInboxPanel != null) {
+                        mediaInboxPanel.removeAllViews();
+                        mediaInboxPanel.addView(
+                                label("Media inbox error: " + e.getMessage())
+                        );
+                    }
+                });
+            }
+        });
+    }
+
+    @Override
+    protected void onActivityResult(
+            int requestCode,
+            int resultCode,
+            Intent data
+    ) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if (resultCode != RESULT_OK || data == null) {
+            if (requestCode == REQUEST_SAVE_MEDIA &&
+                    pendingDecryptedFile != null) {
+                pendingDecryptedFile.delete();
+                pendingDecryptedFile = null;
+                pendingMediaFileId = "";
+            }
+            return;
+        }
+
+        if (requestCode == REQUEST_PICK_MEDIA) {
+            uploadSelectedMedia(data.getData());
+        } else if (requestCode == REQUEST_SAVE_MEDIA) {
+            saveDecryptedMedia(data.getData());
+        }
+    }
+
     private void loadInbox() {
 
         if (!isLoggedIn) return;
@@ -820,6 +1370,8 @@ public class PulseActivity extends Activity {
                         conversationText.setText(finalOutput)
                 );
 
+                loadMediaInbox();
+
             } catch (Exception e) {
                 runOnUiThread(() ->
                         conversationText.setText(
@@ -872,6 +1424,23 @@ public class PulseActivity extends Activity {
     protected void onDestroy() {
         handler.removeCallbacks(inboxPoller);
         executor.shutdownNow();
-        super.onDestroy();
+                if (voiceRecording && voiceRecorder != null) {
+            try {
+                voiceRecorder.stop();
+            } catch (Exception ignored) {
+            }
+        }
+
+        voiceRecording = false;
+        releaseVoiceRecorder();
+
+        if (recordedVoiceFile != null && recordedVoiceFile.exists()) {
+            recordedVoiceFile.delete();
+        }
+
+        handler.removeCallbacks(inboxPoller);
+        executor.shutdownNow();
+
+super.onDestroy();
     }
 }
