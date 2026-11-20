@@ -1,3 +1,4 @@
+
 package com.corex.falcon;
 
 import android.content.Context;
@@ -5,115 +6,266 @@ import android.content.Context;
 import java.io.File;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.UUID;
 
 public final class FalconVault {
+
+    private static final String VAULT_DIRECTORY =
+            "falcon_vault";
+
+    private static final String RECOVERY_DIRECTORY =
+            "falcon_recovered";
+
+    private static final String ENCRYPTED_EXTENSION =
+            ".fxe";
 
     private FalconVault() {
     }
 
-    public static File getVaultDirectory(Context context) throws Exception {
+    // --------------------------------------------------
+    // DIRECTORY MANAGEMENT
+    // --------------------------------------------------
+
+    private static void validateContext(Context context) {
+
+        if (context == null) {
+            throw new IllegalArgumentException(
+                    "Context cannot be null."
+            );
+        }
+    }
+
+    private static File createPrivateDirectory(
+            Context context,
+            String directoryName
+    ) throws Exception {
+
+        validateContext(context);
 
         File directory = new File(
                 context.getFilesDir(),
-                "falcon_vault"
+                directoryName
         );
 
         if (!directory.exists() && !directory.mkdirs()) {
-            throw new Exception("Falcon Vault could not be created.");
+
+            if (!directory.isDirectory()) {
+                throw new Exception(
+                        "Directory could not be created: "
+                                + directoryName
+                );
+            }
+        }
+
+        if (!directory.isDirectory()) {
+            throw new SecurityException(
+                    "Invalid directory."
+            );
         }
 
         return directory.getCanonicalFile();
     }
 
-    public static File getRecoveryDirectory(Context context) throws Exception {
+    public static File getVaultDirectory(
+            Context context
+    ) throws Exception {
 
-        File directory = new File(
-                context.getFilesDir(),
-                "falcon_recovered"
+        return createPrivateDirectory(
+                context,
+                VAULT_DIRECTORY
         );
-
-        if (!directory.exists() && !directory.mkdirs()) {
-            throw new Exception("Recovery directory could not be created.");
-        }
-
-        return directory.getCanonicalFile();
     }
 
-    public static File[] getEncryptedFiles(Context context) throws Exception {
+    public static File getRecoveryDirectory(
+            Context context
+    ) throws Exception {
 
-        File[] files = getVaultDirectory(context).listFiles(
-                (dir, name) -> name.endsWith(".fxe")
+        return createPrivateDirectory(
+                context,
+                RECOVERY_DIRECTORY
+        );
+    }
+
+    // --------------------------------------------------
+    // FILE VALIDATION
+    // --------------------------------------------------
+
+    private static File validateVaultFile(
+            Context context,
+            File encryptedFile
+    ) throws Exception {
+
+        if (encryptedFile == null
+                || !encryptedFile.exists()
+                || !encryptedFile.isFile()) {
+
+            throw new IllegalArgumentException(
+                    "Encrypted file does not exist."
+            );
+        }
+
+        File vault = getVaultDirectory(context);
+
+        File canonicalFile =
+                encryptedFile.getCanonicalFile();
+
+        File parent =
+                canonicalFile.getParentFile();
+
+        if (parent == null || !parent.equals(vault)) {
+
+            throw new SecurityException(
+                    "File is outside Falcon Vault."
+            );
+        }
+
+        if (!canonicalFile.getName()
+                .toLowerCase(java.util.Locale.ROOT)
+                .endsWith(ENCRYPTED_EXTENSION)) {
+
+            throw new SecurityException(
+                    "Invalid encrypted file type."
+            );
+        }
+
+        return canonicalFile;
+    }
+
+    // --------------------------------------------------
+    // ENCRYPTED FILE LIST
+    // --------------------------------------------------
+
+    public static File[] getEncryptedFiles(
+            Context context
+    ) throws Exception {
+
+        File vault = getVaultDirectory(context);
+
+        File[] files = vault.listFiles(
+                (directory, name) ->
+                        name.toLowerCase(
+                                java.util.Locale.ROOT
+                        ).endsWith(ENCRYPTED_EXTENSION)
         );
 
-        if (files == null) {
+        if (files == null || files.length == 0) {
             return new File[0];
         }
 
-        Arrays.sort(
-                files,
-                Comparator.comparingLong(File::lastModified).reversed()
-        );
-
-        return files;
+        return Arrays.stream(files)
+                .filter(File::isFile)
+                .filter(file -> {
+                    try {
+                        return file.getCanonicalFile()
+                                .getParentFile()
+                                .equals(vault);
+                    } catch (Exception exception) {
+                        return false;
+                    }
+                })
+                .sorted(
+                        Comparator.comparingLong(
+                                File::lastModified
+                        ).reversed()
+                )
+                .toArray(File[]::new);
     }
+
+    // --------------------------------------------------
+    // FILE RECOVERY
+    // --------------------------------------------------
 
     public static File recover(
             Context context,
             File encryptedFile
     ) throws Exception {
 
-        if (encryptedFile == null || !encryptedFile.exists()) {
-            throw new Exception("Encrypted file does not exist.");
-        }
+        File source = validateVaultFile(
+                context,
+                encryptedFile
+        );
 
-        File vault = getVaultDirectory(context);
+        File recoveryDirectory =
+                getRecoveryDirectory(context);
 
-        if (!encryptedFile.getCanonicalFile().getParentFile()
-                .equals(vault)) {
-            throw new SecurityException("File is outside Falcon Vault.");
-        }
+        String uniqueId = UUID.randomUUID().toString();
+
+        File temporaryFile = new File(
+                recoveryDirectory,
+                ".recovery_" + uniqueId + ".tmp"
+        );
 
         File recoveredFile = new File(
-                getRecoveryDirectory(context),
-                "recovered_" + System.currentTimeMillis() + ".bin"
+                recoveryDirectory,
+                "recovered_" + uniqueId + ".bin"
         );
+
+        boolean completed = false;
 
         try {
 
-            FalconCrypto.decrypt(encryptedFile, recoveredFile);
+            // Decrypt into a temporary file first.
+            FalconCrypto.decrypt(
+                    source,
+                    temporaryFile
+            );
+
+            if (!temporaryFile.exists()
+                    || !temporaryFile.isFile()
+                    || temporaryFile.length() == 0) {
+
+                throw new Exception(
+                        "Recovered file is invalid or empty."
+                );
+            }
+
+            // Publish only after successful decryption.
+            if (!temporaryFile.renameTo(recoveredFile)) {
+
+                throw new Exception(
+                        "Could not finalize recovered file."
+                );
+            }
+
+            completed = true;
 
             return recoveredFile;
 
-        } catch (Exception e) {
+        } finally {
 
-            if (recoveredFile.exists()) {
-                recoveredFile.delete();
+            if (!completed) {
+
+                if (temporaryFile.exists()) {
+                    temporaryFile.delete();
+                }
+
+                if (recoveredFile.exists()) {
+                    recoveredFile.delete();
+                }
             }
-
-            throw e;
         }
     }
+
+    // --------------------------------------------------
+    // DELETE ENCRYPTED FILE
+    // --------------------------------------------------
 
     public static boolean deleteEncryptedFile(
             Context context,
             File encryptedFile
     ) throws Exception {
 
-        if (encryptedFile == null || !encryptedFile.exists()) {
+        if (encryptedFile == null
+                || !encryptedFile.exists()) {
+
             return false;
         }
 
-        File vault = getVaultDirectory(context);
+        File validatedFile = validateVaultFile(
+                context,
+                encryptedFile
+        );
 
-        if (!encryptedFile.getCanonicalFile().getParentFile()
-                .equals(vault)) {
-            throw new SecurityException("Invalid Falcon Vault file.");
-        }
-
-        if (!encryptedFile.getName().endsWith(".fxe")) {
-            throw new SecurityException("Invalid encrypted file type.");
-        }
-
-        return encryptedFile.delete();
+        return validatedFile.delete();
     }
 }

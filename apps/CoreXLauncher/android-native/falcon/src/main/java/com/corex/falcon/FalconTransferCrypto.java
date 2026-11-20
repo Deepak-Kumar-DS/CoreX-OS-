@@ -1,3 +1,4 @@
+
 package com.corex.falcon;
 
 import javax.crypto.Cipher;
@@ -25,23 +26,30 @@ public final class FalconTransferCrypto {
     };
 
     private static final int AES_KEY_SIZE = 256;
+    private static final int AES_KEY_LENGTH = 32;
+
     private static final int IV_LENGTH = 12;
     private static final int TAG_LENGTH_BITS = 128;
 
     private static final int MAX_WRAPPED_KEY_LENGTH = 1024;
+    private static final int BUFFER_SIZE = 32768;
 
     private static final String TRANSFORMATION =
             "AES/GCM/NoPadding";
 
+    private static final SecureRandom RANDOM =
+            new SecureRandom();
+
     private FalconTransferCrypto() {
     }
 
-    private static SecretKey generateAESKey() throws Exception {
+    private static SecretKey generateAESKey()
+            throws Exception {
 
         KeyGenerator generator =
                 KeyGenerator.getInstance("AES");
 
-        generator.init(AES_KEY_SIZE);
+        generator.init(AES_KEY_SIZE, RANDOM);
 
         return generator.generateKey();
     }
@@ -50,16 +58,84 @@ public final class FalconTransferCrypto {
 
         byte[] iv = new byte[IV_LENGTH];
 
-        new SecureRandom().nextBytes(iv);
+        RANDOM.nextBytes(iv);
 
         return iv;
     }
 
+    private static void validateFiles(
+            File source,
+            File destination
+    ) throws Exception {
+
+        if (source == null ||
+                !source.isFile() ||
+                !source.canRead()) {
+
+            throw new Exception(
+                    "Source file is unavailable."
+            );
+        }
+
+        if (destination == null) {
+            throw new IllegalArgumentException(
+                    "Destination file is missing."
+            );
+        }
+
+        if (source.getCanonicalPath().equals(
+                destination.getCanonicalPath())) {
+
+            throw new IllegalArgumentException(
+                    "Source and destination cannot be identical."
+            );
+        }
+
+        File parent = destination.getAbsoluteFile()
+                .getParentFile();
+
+        if (parent == null) {
+            throw new Exception(
+                    "Invalid destination directory."
+            );
+        }
+
+        if (!parent.exists() && !parent.mkdirs()) {
+            throw new Exception(
+                    "Cannot create destination directory."
+            );
+        }
+
+        if (!parent.isDirectory()) {
+            throw new Exception(
+                    "Destination parent is not a directory."
+            );
+        }
+    }
+
+    private static byte[] createHeader(
+            byte[] wrappedKey,
+            byte[] iv
+    ) {
+
+        ByteBuffer buffer = ByteBuffer.allocate(
+                MAGIC.length +
+                4 +
+                wrappedKey.length +
+                IV_LENGTH
+        );
+
+        buffer.put(MAGIC);
+        buffer.putInt(wrappedKey.length);
+        buffer.put(wrappedKey);
+        buffer.put(iv);
+
+        return buffer.array();
+    }
+
     /**
-     * Encrypts a file for a recipient.
-     *
-     * The recipient's RSA public key protects
-     * the randomly generated AES key.
+     * Encrypts a file using AES-256-GCM.
+     * AES key is protected using recipient RSA public key.
      */
     public static void encryptForRecipient(
             File sourceFile,
@@ -67,23 +143,10 @@ public final class FalconTransferCrypto {
             String recipientPublicKey
     ) throws Exception {
 
-        if (sourceFile == null
-                || !sourceFile.isFile()
-                || !sourceFile.canRead()) {
+        validateFiles(sourceFile, destinationFile);
 
-            throw new Exception(
-                    "Source file is unavailable."
-            );
-        }
-
-        if (destinationFile == null) {
-            throw new IllegalArgumentException(
-                    "Destination file is missing."
-            );
-        }
-
-        if (recipientPublicKey == null
-                || recipientPublicKey.trim().isEmpty()) {
+        if (recipientPublicKey == null ||
+                recipientPublicKey.trim().isEmpty()) {
 
             throw new IllegalArgumentException(
                     "Recipient public key is missing."
@@ -98,32 +161,25 @@ public final class FalconTransferCrypto {
                         recipientPublicKey
                 );
 
-        if (wrappedKey.length == 0
-                || wrappedKey.length > MAX_WRAPPED_KEY_LENGTH) {
+        if (wrappedKey == null ||
+                wrappedKey.length == 0 ||
+                wrappedKey.length > MAX_WRAPPED_KEY_LENGTH) {
 
-            throw new Exception(
+            throw new SecurityException(
                     "Invalid encrypted AES key."
             );
         }
 
         byte[] iv = generateIV();
 
-        ByteBuffer headerBuffer = ByteBuffer.allocate(
-                MAGIC.length
-                        + 4
-                        + wrappedKey.length
-                        + IV_LENGTH
+        byte[] header = createHeader(
+                wrappedKey,
+                iv
         );
 
-        headerBuffer.put(MAGIC);
-        headerBuffer.putInt(wrappedKey.length);
-        headerBuffer.put(wrappedKey);
-        headerBuffer.put(iv);
-
-        byte[] authenticatedHeader =
-                headerBuffer.array();
-
-        Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+        Cipher cipher = Cipher.getInstance(
+                TRANSFORMATION
+        );
 
         cipher.init(
                 Cipher.ENCRYPT_MODE,
@@ -134,7 +190,13 @@ public final class FalconTransferCrypto {
                 )
         );
 
-        cipher.updateAAD(authenticatedHeader);
+        cipher.updateAAD(header);
+
+        File temporary = File.createTempFile(
+                "falcon_encrypt_",
+                ".tmp",
+                destinationFile.getAbsoluteFile().getParentFile()
+        );
 
         boolean success = false;
 
@@ -143,26 +205,25 @@ public final class FalconTransferCrypto {
                         new FileInputStream(sourceFile);
 
                 OutputStream output =
-                        new FileOutputStream(destinationFile)
+                        new FileOutputStream(temporary)
         ) {
 
-            output.write(authenticatedHeader);
+            output.write(header);
 
-            byte[] buffer = new byte[8192];
+            byte[] buffer = new byte[BUFFER_SIZE];
 
-            int bytesRead;
+            int count;
 
-            while ((bytesRead = input.read(buffer)) != -1) {
+            while ((count = input.read(buffer)) != -1) {
 
-                byte[] encrypted =
-                        cipher.update(
-                                buffer,
-                                0,
-                                bytesRead
-                        );
+                byte[] encrypted = cipher.update(
+                        buffer,
+                        0,
+                        count
+                );
 
-                if (encrypted != null
-                        && encrypted.length > 0) {
+                if (encrypted != null &&
+                        encrypted.length > 0) {
 
                     output.write(encrypted);
                 }
@@ -170,9 +231,7 @@ public final class FalconTransferCrypto {
 
             byte[] finalData = cipher.doFinal();
 
-            if (finalData.length > 0) {
-                output.write(finalData);
-            }
+            output.write(finalData);
 
             output.flush();
 
@@ -180,59 +239,65 @@ public final class FalconTransferCrypto {
 
         } finally {
 
-            if (!success && destinationFile.exists()) {
-                destinationFile.delete();
+            if (!success) {
+                temporary.delete();
             }
         }
+
+        replaceDestination(
+                temporary,
+                destinationFile
+        );
     }
 
     /**
-     * Decrypts a file addressed to this device's
-     * Falcon RSA identity.
+     * Decrypts a file using this device's RSA private key.
+     *
+     * Plaintext is first written to a temporary file.
+     * Destination is updated only after GCM authentication succeeds.
      */
     public static void decryptReceivedFile(
             File encryptedFile,
             File destinationFile
     ) throws Exception {
 
-        if (encryptedFile == null
-                || !encryptedFile.isFile()
-                || !encryptedFile.canRead()) {
+        validateFiles(
+                encryptedFile,
+                destinationFile
+        );
 
-            throw new Exception(
-                    "Encrypted file is unavailable."
-            );
-        }
-
-        if (destinationFile == null) {
-            throw new IllegalArgumentException(
-                    "Destination file is missing."
-            );
-        }
+        File temporary = File.createTempFile(
+                "falcon_decrypt_",
+                ".tmp",
+                destinationFile.getAbsoluteFile().getParentFile()
+        );
 
         boolean success = false;
+
+        byte[] rawAESKey = null;
 
         try (
                 InputStream input =
                         new FileInputStream(encryptedFile);
 
                 OutputStream output =
-                        new FileOutputStream(destinationFile)
+                        new FileOutputStream(temporary)
         ) {
 
-            // Read file signature.
+            // Read and validate signature.
+
             byte[] magic = new byte[MAGIC.length];
 
             readFully(input, magic);
 
             if (!Arrays.equals(magic, MAGIC)) {
-
-                throw new Exception(
+                throw new SecurityException(
                         "Invalid Falcon transfer file."
                 );
             }
 
             // Read wrapped AES key length.
+
             byte[] lengthBytes = new byte[4];
 
             readFully(input, lengthBytes);
@@ -240,46 +305,43 @@ public final class FalconTransferCrypto {
             int wrappedKeyLength =
                     ByteBuffer.wrap(lengthBytes).getInt();
 
-            if (wrappedKeyLength <= 0
-                    || wrappedKeyLength > MAX_WRAPPED_KEY_LENGTH) {
+            if (wrappedKeyLength <= 0 ||
+                    wrappedKeyLength > MAX_WRAPPED_KEY_LENGTH) {
 
-                throw new Exception(
-                        "Invalid wrapped AES key."
+                throw new SecurityException(
+                        "Invalid wrapped AES key length."
                 );
             }
 
-            // Read RSA encrypted AES key.
+            // Read wrapped AES key.
+
             byte[] wrappedKey =
                     new byte[wrappedKeyLength];
 
             readFully(input, wrappedKey);
 
             // Read initialization vector.
+
             byte[] iv = new byte[IV_LENGTH];
 
             readFully(input, iv);
 
             // Reconstruct authenticated header.
-            ByteBuffer headerBuffer = ByteBuffer.allocate(
-                    MAGIC.length
-                            + 4
-                            + wrappedKey.length
-                            + IV_LENGTH
+
+            byte[] header = createHeader(
+                    wrappedKey,
+                    iv
             );
 
-            headerBuffer.put(MAGIC);
-            headerBuffer.putInt(wrappedKeyLength);
-            headerBuffer.put(wrappedKey);
-            headerBuffer.put(iv);
+            // Decrypt AES key using device identity.
 
-            byte[] authenticatedHeader =
-                    headerBuffer.array();
+            rawAESKey =
+                    FalconIdentity.decryptForSelf(
+                            wrappedKey
+                    );
 
-            // Recover AES key using this device's RSA identity.
-            byte[] rawAESKey =
-                    FalconIdentity.decryptForSelf(wrappedKey);
-
-            if (rawAESKey.length != 32) {
+            if (rawAESKey == null ||
+                    rawAESKey.length != AES_KEY_LENGTH) {
 
                 throw new SecurityException(
                         "Invalid AES-256 key."
@@ -291,7 +353,9 @@ public final class FalconTransferCrypto {
                     "AES"
             );
 
-            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+            Cipher cipher = Cipher.getInstance(
+                    TRANSFORMATION
+            );
 
             cipher.init(
                     Cipher.DECRYPT_MODE,
@@ -302,29 +366,31 @@ public final class FalconTransferCrypto {
                     )
             );
 
-            cipher.updateAAD(authenticatedHeader);
+            cipher.updateAAD(header);
 
-            byte[] buffer = new byte[8192];
+            // Decrypt into temporary file.
 
-            int bytesRead;
+            byte[] buffer = new byte[BUFFER_SIZE];
 
-            while ((bytesRead = input.read(buffer)) != -1) {
+            int count;
 
-                byte[] decrypted =
-                        cipher.update(
-                                buffer,
-                                0,
-                                bytesRead
-                        );
+            while ((count = input.read(buffer)) != -1) {
 
-                if (decrypted != null
-                        && decrypted.length > 0) {
+                byte[] decrypted = cipher.update(
+                        buffer,
+                        0,
+                        count
+                );
+
+                if (decrypted != null &&
+                        decrypted.length > 0) {
 
                     output.write(decrypted);
                 }
             }
 
-            // GCM authentication is verified here.
+            // Authentication tag verification.
+
             byte[] finalData = cipher.doFinal();
 
             if (finalData.length > 0) {
@@ -337,9 +403,45 @@ public final class FalconTransferCrypto {
 
         } finally {
 
-            if (!success && destinationFile.exists()) {
-                destinationFile.delete();
+            if (rawAESKey != null) {
+                Arrays.fill(rawAESKey, (byte) 0);
             }
+
+            if (!success) {
+                temporary.delete();
+            }
+        }
+
+        // Publish plaintext only after authentication succeeds.
+
+        replaceDestination(
+                temporary,
+                destinationFile
+        );
+    }
+
+    private static void replaceDestination(
+            File temporary,
+            File destination
+    ) throws Exception {
+
+        if (destination.exists() &&
+                !destination.delete()) {
+
+            temporary.delete();
+
+            throw new Exception(
+                    "Cannot replace destination file."
+            );
+        }
+
+        if (!temporary.renameTo(destination)) {
+
+            temporary.delete();
+
+            throw new Exception(
+                    "Cannot save completed transfer file."
+            );
         }
     }
 
@@ -359,7 +461,6 @@ public final class FalconTransferCrypto {
             );
 
             if (count == -1) {
-
                 throw new Exception(
                         "Incomplete Falcon transfer file."
                 );

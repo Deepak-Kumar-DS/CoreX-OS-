@@ -4,21 +4,20 @@ import android.content.Context;
 import android.database.Cursor;
 import android.net.Uri;
 import android.provider.OpenableColumns;
-
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 
+import javax.crypto.AEADBadTagException;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
-import javax.crypto.AEADBadTagException;
 import javax.crypto.spec.GCMParameterSpec;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.io.RandomAccessFile;
+import java.io.OutputStream;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -30,10 +29,14 @@ import java.util.UUID;
 
 public final class FalconCrypto {
 
-    private static final String KEY_ALIAS = "CoreX_Falcon_AES_KEY";
-    private static final String ANDROID_KEYSTORE = "AndroidKeyStore";
+    private static final String KEY_ALIAS =
+            "CoreX_Falcon_AES_KEY";
 
-    private static final String TRANSFORMATION = "AES/GCM/NoPadding";
+    private static final String ANDROID_KEYSTORE =
+            "AndroidKeyStore";
+
+    private static final String TRANSFORMATION =
+            "AES/GCM/NoPadding";
 
     private static final byte[] MAGIC = {
             'F', 'X', 'E', '1'
@@ -42,13 +45,23 @@ public final class FalconCrypto {
     private static final int IV_LENGTH = 12;
     private static final int TAG_LENGTH_BITS = 128;
     private static final int MAX_FILENAME_LENGTH = 4096;
+    private static final int BUFFER_SIZE = 32768;
+
+    private static final SecureRandom SECURE_RANDOM =
+            new SecureRandom();
 
     private FalconCrypto() {
     }
 
+    // ==================================================
+    // ANDROID KEYSTORE
+    // ==================================================
+
     private static SecretKey getOrCreateKey() throws Exception {
 
-        KeyStore keyStore = KeyStore.getInstance(ANDROID_KEYSTORE);
+        KeyStore keyStore =
+                KeyStore.getInstance(ANDROID_KEYSTORE);
+
         keyStore.load(null);
 
         if (keyStore.containsAlias(KEY_ALIAS)) {
@@ -56,13 +69,29 @@ public final class FalconCrypto {
             KeyStore.Entry entry =
                     keyStore.getEntry(KEY_ALIAS, null);
 
-            if (entry instanceof KeyStore.SecretKeyEntry) {
+            if (!(entry instanceof KeyStore.SecretKeyEntry)) {
 
-                return ((KeyStore.SecretKeyEntry) entry).getSecretKey();
+                throw new SecurityException(
+                        "Falcon encryption key is invalid."
+                );
             }
+
+            SecretKey key =
+                    ((KeyStore.SecretKeyEntry) entry)
+                            .getSecretKey();
+
+            if (key == null
+                    || !"AES".equalsIgnoreCase(key.getAlgorithm())) {
+
+                throw new SecurityException(
+                        "Falcon AES key is unavailable."
+                );
+            }
+
+            return key;
         }
 
-        KeyGenerator keyGenerator =
+        KeyGenerator generator =
                 KeyGenerator.getInstance(
                         KeyProperties.KEY_ALGORITHM_AES,
                         ANDROID_KEYSTORE
@@ -74,18 +103,26 @@ public final class FalconCrypto {
                         KeyProperties.PURPOSE_ENCRYPT
                                 | KeyProperties.PURPOSE_DECRYPT
                 )
-                        .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                        .setBlockModes(
+                                KeyProperties.BLOCK_MODE_GCM
+                        )
                         .setEncryptionPaddings(
                                 KeyProperties.ENCRYPTION_PADDING_NONE
                         )
                         .setKeySize(256)
                         .setRandomizedEncryptionRequired(true)
+                        .setUserAuthenticationRequired(false)
                         .build();
 
-        keyGenerator.init(specification);
+        // Correct KeyGenerator API method.
+        generator.init(specification);
 
-        return keyGenerator.generateKey();
+        return generator.generateKey();
     }
+
+    // ==================================================
+    // FILE NAME HANDLING
+    // ==================================================
 
     private static String getDisplayName(
             Context context,
@@ -94,11 +131,16 @@ public final class FalconCrypto {
 
         String name = null;
 
-        try (Cursor cursor = context.getContentResolver()
-                .query(uri, null, null, null, null)) {
+        try (Cursor cursor =
+                     context.getContentResolver().query(
+                             uri,
+                             null,
+                             null,
+                             null,
+                             null
+                     )) {
 
-            if (cursor != null
-                    && cursor.moveToFirst()) {
+            if (cursor != null && cursor.moveToFirst()) {
 
                 int index = cursor.getColumnIndex(
                         OpenableColumns.DISPLAY_NAME
@@ -128,9 +170,7 @@ public final class FalconCrypto {
         String cleaned = name.replaceAll(
                 "[\\\\/:*?\"<>|\\p{Cntrl}]",
                 "_"
-        );
-
-        cleaned = cleaned.trim();
+        ).trim();
 
         if (cleaned.isEmpty()) {
             return "Falcon_File";
@@ -147,9 +187,16 @@ public final class FalconCrypto {
             String originalName
     ) {
 
-        byte[] nameBytes = originalName.getBytes(
-                StandardCharsets.UTF_8
-        );
+        byte[] nameBytes =
+                originalName.getBytes(StandardCharsets.UTF_8);
+
+        if (nameBytes.length <= 0
+                || nameBytes.length > MAX_FILENAME_LENGTH) {
+
+            throw new IllegalArgumentException(
+                    "Invalid filename metadata."
+            );
+        }
 
         ByteBuffer buffer = ByteBuffer.allocate(
                 MAGIC.length + 4 + nameBytes.length
@@ -162,39 +209,143 @@ public final class FalconCrypto {
         return buffer.array();
     }
 
+    // ==================================================
+    // FILE UTILITIES
+    // ==================================================
+
+    private static void readFully(
+            InputStream input,
+            byte[] buffer
+    ) throws Exception {
+
+        int offset = 0;
+
+        while (offset < buffer.length) {
+
+            int count = input.read(
+                    buffer,
+                    offset,
+                    buffer.length - offset
+            );
+
+            if (count == -1) {
+                throw new SecurityException(
+                        "Encrypted file is incomplete."
+                );
+            }
+
+            if (count == 0) {
+                continue;
+            }
+
+            offset += count;
+        }
+    }
+
+    private static File createTemporaryFile(
+            File destination
+    ) throws Exception {
+
+        File absoluteDestination =
+                destination.getAbsoluteFile();
+
+        File parent =
+                absoluteDestination.getParentFile();
+
+        if (parent == null) {
+            throw new Exception(
+                    "Invalid destination directory."
+            );
+        }
+
+        if (!parent.exists() && !parent.mkdirs()) {
+
+            if (!parent.isDirectory()) {
+                throw new Exception(
+                        "Cannot create destination directory."
+                );
+            }
+        }
+
+        File canonicalParent =
+                parent.getCanonicalFile();
+
+        File canonicalDestination =
+                absoluteDestination.getCanonicalFile();
+
+        if (!canonicalDestination.getParentFile()
+                .equals(canonicalParent)) {
+
+            throw new SecurityException(
+                    "Invalid destination path."
+            );
+        }
+
+        return File.createTempFile(
+                ".falcon_",
+                ".tmp",
+                canonicalParent
+        );
+    }
+
+    private static void publishFile(
+            File temporaryFile,
+            File destinationFile
+    ) throws Exception {
+
+        if (destinationFile.exists()) {
+
+            throw new Exception(
+                    "Destination file already exists."
+            );
+        }
+
+        if (!temporaryFile.renameTo(destinationFile)) {
+
+            throw new Exception(
+                    "Could not finalize Falcon file."
+            );
+        }
+    }
+
+    // ==================================================
+    // ENCRYPT FILE
+    // ==================================================
+
     public static File encrypt(
             Context context,
             Uri sourceUri
     ) throws Exception {
 
-        if (sourceUri == null) {
+        if (context == null || sourceUri == null) {
+
             throw new IllegalArgumentException(
                     "Source file is missing."
             );
         }
 
-        String originalName = getDisplayName(
-                context,
-                sourceUri
-        );
+        String originalName =
+                getDisplayName(context, sourceUri);
 
         byte[] authenticatedHeader =
                 createAuthenticatedHeader(originalName);
 
         byte[] iv = new byte[IV_LENGTH];
 
-        SecureRandom secureRandom = new SecureRandom();
-        secureRandom.nextBytes(iv);
+        SECURE_RANDOM.nextBytes(iv);
 
-        Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+        Cipher cipher =
+                Cipher.getInstance(TRANSFORMATION);
 
         cipher.init(
                 Cipher.ENCRYPT_MODE,
                 getOrCreateKey(),
-                new GCMParameterSpec(TAG_LENGTH_BITS, iv)
+                new GCMParameterSpec(
+                        TAG_LENGTH_BITS,
+                        iv
+                )
         );
 
-        // Filename metadata is authenticated by AES-GCM.
         cipher.updateAAD(authenticatedHeader);
 
         File vaultDirectory =
@@ -209,86 +360,116 @@ public final class FalconCrypto {
                         + ".fxe"
         );
 
-        boolean success = false;
+        File temporaryFile =
+                createTemporaryFile(encryptedFile);
 
-        try (
-                InputStream input =
-                        context.getContentResolver()
-                                .openInputStream(sourceUri);
+        boolean completed = false;
 
-                FileOutputStream output =
-                        new FileOutputStream(encryptedFile)
-        ) {
+        try {
 
-            if (input == null) {
+            InputStream source =
+                    context.getContentResolver()
+                            .openInputStream(sourceUri);
+
+            if (source == null) {
                 throw new Exception(
                         "Unable to open selected file."
                 );
             }
 
-            // Header
-            output.write(authenticatedHeader);
+            try (InputStream input = source;
+                 OutputStream output =
+                         new FileOutputStream(temporaryFile)) {
 
-            // Initialization vector
-            output.write(iv);
+                // Authenticated header.
+                output.write(authenticatedHeader);
 
-            byte[] buffer = new byte[8192];
+                // Initialization vector.
+                output.write(iv);
 
-            int bytesRead;
+                byte[] buffer =
+                        new byte[BUFFER_SIZE];
 
-            while ((bytesRead = input.read(buffer)) != -1) {
+                int count;
 
-                byte[] encryptedChunk =
-                        cipher.update(buffer, 0, bytesRead);
+                while ((count = input.read(buffer)) != -1) {
 
-                if (encryptedChunk != null
-                        && encryptedChunk.length > 0) {
+                    if (count == 0) {
+                        continue;
+                    }
 
-                    output.write(encryptedChunk);
+                    byte[] encrypted =
+                            cipher.update(
+                                    buffer,
+                                    0,
+                                    count
+                            );
+
+                    if (encrypted != null
+                            && encrypted.length > 0) {
+
+                        output.write(encrypted);
+                    }
                 }
+
+                byte[] finalEncrypted =
+                        cipher.doFinal();
+
+                if (finalEncrypted.length > 0) {
+                    output.write(finalEncrypted);
+                }
+
+                output.flush();
             }
 
-            // Writes final encrypted data and GCM authentication tag.
-            byte[] finalEncryptedData = cipher.doFinal();
+            // Header + IV + GCM authentication tag.
+            // This also permits an empty source file.
+            if (temporaryFile.length() <
+                    authenticatedHeader.length + IV_LENGTH + 16) {
 
-            if (finalEncryptedData.length > 0) {
-                output.write(finalEncryptedData);
+                throw new Exception(
+                        "Encrypted file is incomplete."
+                );
             }
 
-            output.flush();
+            publishFile(
+                    temporaryFile,
+                    encryptedFile
+            );
 
-            success = true;
+            completed = true;
 
             return encryptedFile;
 
         } finally {
 
-            if (!success && encryptedFile.exists()) {
-                encryptedFile.delete();
+            if (!completed && temporaryFile.exists()) {
+                temporaryFile.delete();
             }
         }
     }
+
+    // ==================================================
+    // READ ORIGINAL FILE NAME
+    // ==================================================
 
     public static String getOriginalFileName(
             File encryptedFile
     ) {
 
         if (encryptedFile == null
-                || !encryptedFile.exists()) {
+                || !encryptedFile.exists()
+                || !encryptedFile.isFile()) {
 
             return "Unknown File";
         }
 
-        try (
-                FileInputStream input =
-                        new FileInputStream(encryptedFile)
-        ) {
+        try (InputStream input =
+                     new FileInputStream(encryptedFile)) {
 
             byte[] magic = new byte[MAGIC.length];
 
-            if (input.read(magic) != MAGIC.length) {
-                return "Unknown File";
-            }
+            readFully(input, magic);
 
             for (int i = 0; i < MAGIC.length; i++) {
 
@@ -299,13 +480,10 @@ public final class FalconCrypto {
 
             byte[] lengthBytes = new byte[4];
 
-            if (input.read(lengthBytes) != 4) {
-                return "Unknown File";
-            }
+            readFully(input, lengthBytes);
 
-            int nameLength = ByteBuffer
-                    .wrap(lengthBytes)
-                    .getInt();
+            int nameLength =
+                    ByteBuffer.wrap(lengthBytes).getInt();
 
             if (nameLength <= 0
                     || nameLength > MAX_FILENAME_LENGTH) {
@@ -313,24 +491,10 @@ public final class FalconCrypto {
                 return "Unknown File";
             }
 
-            byte[] nameBytes = new byte[nameLength];
+            byte[] nameBytes =
+                    new byte[nameLength];
 
-            int totalRead = 0;
-
-            while (totalRead < nameLength) {
-
-                int count = input.read(
-                        nameBytes,
-                        totalRead,
-                        nameLength - totalRead
-                );
-
-                if (count == -1) {
-                    return "Unknown File";
-                }
-
-                totalRead += count;
-            }
+            readFully(input, nameBytes);
 
             String name = new String(
                     nameBytes,
@@ -339,11 +503,15 @@ public final class FalconCrypto {
 
             return sanitizeFileName(name);
 
-        } catch (Exception e) {
+        } catch (Exception exception) {
 
             return "Unknown File";
         }
     }
+
+    // ==================================================
+    // DECRYPT FILE
+    // ==================================================
 
     public static void decrypt(
             File encryptedFile,
@@ -351,187 +519,191 @@ public final class FalconCrypto {
     ) throws Exception {
 
         if (encryptedFile == null
-                || !encryptedFile.exists()) {
+                || !encryptedFile.exists()
+                || !encryptedFile.isFile()) {
 
-            throw new Exception(
+            throw new IllegalArgumentException(
                     "Encrypted file does not exist."
             );
         }
 
         if (destinationFile == null) {
+
             throw new IllegalArgumentException(
                     "Destination file is missing."
             );
         }
 
-        boolean success = false;
+        File source =
+                encryptedFile.getCanonicalFile();
 
-        try (
-                FileInputStream input =
-                        new FileInputStream(encryptedFile);
+        File destination =
+                destinationFile.getAbsoluteFile();
 
-                FileOutputStream output =
-                        new FileOutputStream(destinationFile)
-        ) {
+        if (source.equals(destination.getCanonicalFile())) {
 
-            // Read and verify file signature.
-            byte[] magic = new byte[MAGIC.length];
+            throw new SecurityException(
+                    "Source and destination cannot be the same."
+            );
+        }
 
-            if (input.read(magic) != MAGIC.length) {
-                throw new Exception(
-                        "Invalid Falcon encrypted file."
-                );
-            }
+        File temporaryFile =
+                createTemporaryFile(destination);
 
-            for (int i = 0; i < MAGIC.length; i++) {
+        boolean completed = false;
 
-                if (magic[i] != MAGIC[i]) {
-                    throw new Exception(
-                            "Unsupported Falcon file format."
+        try {
+
+            try (InputStream input =
+                         new FileInputStream(source);
+
+                 OutputStream output =
+                         new FileOutputStream(temporaryFile)) {
+
+                // Verify file signature.
+                byte[] magic = new byte[MAGIC.length];
+
+                readFully(input, magic);
+
+                for (int i = 0; i < MAGIC.length; i++) {
+
+                    if (magic[i] != MAGIC[i]) {
+
+                        throw new SecurityException(
+                                "Unsupported Falcon file format."
+                        );
+                    }
+                }
+
+                // Read filename length.
+                byte[] lengthBytes = new byte[4];
+
+                readFully(input, lengthBytes);
+
+                int nameLength =
+                        ByteBuffer.wrap(lengthBytes).getInt();
+
+                if (nameLength <= 0
+                        || nameLength > MAX_FILENAME_LENGTH) {
+
+                    throw new SecurityException(
+                            "Invalid filename metadata."
                     );
                 }
-            }
 
-            // Read filename length.
-            byte[] lengthBytes = new byte[4];
+                // Read original filename.
+                byte[] nameBytes =
+                        new byte[nameLength];
 
-            if (input.read(lengthBytes) != 4) {
-                throw new Exception(
-                        "Encrypted file header is incomplete."
+                readFully(input, nameBytes);
+
+                // Reconstruct authenticated header.
+                byte[] authenticatedHeader =
+                        new byte[
+                                MAGIC.length
+                                        + 4
+                                        + nameBytes.length
+                        ];
+
+                System.arraycopy(
+                        MAGIC,
+                        0,
+                        authenticatedHeader,
+                        0,
+                        MAGIC.length
                 );
-            }
 
-            int nameLength = ByteBuffer
-                    .wrap(lengthBytes)
-                    .getInt();
-
-            if (nameLength <= 0
-                    || nameLength > MAX_FILENAME_LENGTH) {
-
-                throw new Exception(
-                        "Invalid filename metadata."
+                System.arraycopy(
+                        lengthBytes,
+                        0,
+                        authenticatedHeader,
+                        MAGIC.length,
+                        4
                 );
-            }
 
-            // Read original filename metadata.
-            byte[] nameBytes = new byte[nameLength];
-
-            int totalRead = 0;
-
-            while (totalRead < nameLength) {
-
-                int count = input.read(
+                System.arraycopy(
                         nameBytes,
-                        totalRead,
-                        nameLength - totalRead
+                        0,
+                        authenticatedHeader,
+                        MAGIC.length + 4,
+                        nameBytes.length
                 );
 
-                if (count == -1) {
-                    throw new Exception(
-                            "Incomplete filename metadata."
-                    );
+                // Read IV.
+                byte[] iv = new byte[IV_LENGTH];
+
+                readFully(input, iv);
+
+                Cipher cipher =
+                        Cipher.getInstance(TRANSFORMATION);
+
+                cipher.init(
+                        Cipher.DECRYPT_MODE,
+                        getOrCreateKey(),
+                        new GCMParameterSpec(
+                                TAG_LENGTH_BITS,
+                                iv
+                        )
+                );
+
+                cipher.updateAAD(authenticatedHeader);
+
+                byte[] buffer =
+                        new byte[BUFFER_SIZE];
+
+                int count;
+
+                while ((count = input.read(buffer)) != -1) {
+
+                    if (count == 0) {
+                        continue;
+                    }
+
+                    byte[] decrypted =
+                            cipher.update(
+                                    buffer,
+                                    0,
+                                    count
+                            );
+
+                    if (decrypted != null
+                            && decrypted.length > 0) {
+
+                        output.write(decrypted);
+                    }
                 }
 
-                totalRead += count;
-            }
+                // GCM authentication is verified here.
+                byte[] finalDecrypted =
+                        cipher.doFinal();
 
-            // Reconstruct the exact authenticated header.
-            byte[] authenticatedHeader =
-                    new byte[
-                            MAGIC.length
-                                    + 4
-                                    + nameBytes.length
-                    ];
-
-            System.arraycopy(
-                    MAGIC,
-                    0,
-                    authenticatedHeader,
-                    0,
-                    MAGIC.length
-            );
-
-            System.arraycopy(
-                    lengthBytes,
-                    0,
-                    authenticatedHeader,
-                    MAGIC.length,
-                    4
-            );
-
-            System.arraycopy(
-                    nameBytes,
-                    0,
-                    authenticatedHeader,
-                    MAGIC.length + 4,
-                    nameBytes.length
-            );
-
-            // Read initialization vector.
-            byte[] iv = new byte[IV_LENGTH];
-
-            if (input.read(iv) != IV_LENGTH) {
-                throw new Exception(
-                        "Encryption IV is missing."
-                );
-            }
-
-            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
-
-            cipher.init(
-                    Cipher.DECRYPT_MODE,
-                    getOrCreateKey(),
-                    new GCMParameterSpec(TAG_LENGTH_BITS, iv)
-            );
-
-            // Verify filename metadata during GCM authentication.
-            cipher.updateAAD(authenticatedHeader);
-
-            byte[] buffer = new byte[8192];
-
-            int bytesRead;
-
-            while ((bytesRead = input.read(buffer)) != -1) {
-
-                byte[] decryptedChunk =
-                        cipher.update(buffer, 0, bytesRead);
-
-                if (decryptedChunk != null
-                        && decryptedChunk.length > 0) {
-
-                    output.write(decryptedChunk);
+                if (finalDecrypted.length > 0) {
+                    output.write(finalDecrypted);
                 }
+
+                output.flush();
             }
 
-            // Authentication tag is verified here.
-            // Tampered or corrupted files will fail.
-            byte[] finalDecryptedData = cipher.doFinal();
+            // Only publish after successful GCM authentication.
+            publishFile(
+                    temporaryFile,
+                    destination
+            );
 
-            if (finalDecryptedData.length > 0) {
-                output.write(finalDecryptedData);
-            }
+            completed = true;
 
-            output.flush();
+        } catch (AEADBadTagException exception) {
 
-            success = true;
-
-        } catch (Exception e) {
-
-            if (e instanceof AEADBadTagException) {
-
-                throw new SecurityException(
-                        "Falcon security verification failed. "
-                                + "File may have been modified.",
-                        e
-                );
-            }
-
-            throw e;
+            throw new SecurityException(
+                    "Falcon security verification failed. "
+                            + "File may have been modified or corrupted.",
+                    exception
+            );
 
         } finally {
 
-            if (!success && destinationFile.exists()) {
-                destinationFile.delete();
+            if (!completed && temporaryFile.exists()) {
+                temporaryFile.delete();
             }
         }
     }

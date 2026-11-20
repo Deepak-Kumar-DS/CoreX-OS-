@@ -10,3 +10,14 @@ local.properties
 .vscode/
 .DS_Store
 Thumbs.db
+
+# CoreX Communication Server - private runtime data
+falcon-server/falcon-data.json
+falcon-server/falcon-data.json.tmp
+falcon-server/falcon-uploads/
+falcon-server/node_modules/
+falcon-server/*.log
+
+# Local backup files
+*.backup
+*.bak

@@ -2,43 +2,43 @@ package com.corex.launcher;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.content.ActivityNotFoundException;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.os.BatteryManager;
-import android.os.Bundle;
-import android.os.Handler;
-import android.speech.RecognizerIntent;
 import android.net.Uri;
+import android.os.Bundle;
+import android.os.BatteryManager;
+import android.os.Handler;
+import android.content.IntentFilter;
 import android.view.Gravity;
 import android.view.View;
-import android.view.inputmethod.EditorInfo;
+import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.GridLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.text.Editable;
+import android.text.TextWatcher;
 
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
 
-    private final int BLUE = Color.rgb(38, 110, 180);
-    private final int BACKGROUND = Color.rgb(246, 247, 249);
+    private final int BG = Color.rgb(8, 11, 18);
+    private final int CARD = Color.rgb(20, 27, 40);
     private final int WHITE = Color.WHITE;
-    private final int BLACK = Color.rgb(35, 35, 35);
-    private final int GRAY = Color.rgb(115, 115, 115);
+    private final int MUTED = Color.rgb(160, 170, 185);
+    private final int ACCENT = Color.rgb(118, 87, 255);
 
-    private TextView timeText;
-    private TextView dayText;
-    private TextView dateText;
-    private TextView batteryText;
+    private TextView clock;
+    private TextView dayDate;
+    private TextView battery;
     private GridLayout appGrid;
     private EditText searchInput;
 
@@ -53,28 +53,24 @@ public class MainActivity extends Activity {
             "Files",
             "Browser",
             "Falcon",
-            "CoreX AI"
+            "CoreX AI",
+            "CoreX Pulse"
     };
 
     private final String[] appIcons = {
-            "☎", "✉", "📷",
-            "▣", "⚙", "▤",
-            "🌐", "➤", "✦"
+            "☎",
+            "✉",
+            "◎",
+            "▣",
+            "⚙",
+            "▤",
+            "◉",
+            "➤",
+            "✦",
+            "◌"
     };
 
-    private final int[] iconColors = {
-            0xFF4CAF50,
-            0xFF2196F3,
-            0xFF607D8B,
-            0xFF9C27B0,
-            0xFF78909C,
-            0xFFFF9800,
-            0xFF03A9F4,
-            0xFF455A64,
-            0xFF3F51B5
-    };
-
-    private final Runnable clockUpdater = new Runnable() {
+    private final Runnable clockRunnable = new Runnable() {
         @Override
         public void run() {
             updateInformation();
@@ -86,232 +82,183 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        getWindow().setStatusBarColor(BLUE);
-        getWindow().setNavigationBarColor(Color.BLACK);
+        getWindow().setStatusBarColor(BG);
+        getWindow().setNavigationBarColor(BG);
 
         buildHomeScreen();
-        updateInformation();
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        handler.removeCallbacks(clockUpdater);
-        handler.post(clockUpdater);
-    }
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-        handler.removeCallbacks(clockUpdater);
+        handler.post(clockRunnable);
     }
 
     private void buildHomeScreen() {
 
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setBackgroundColor(BG);
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(BACKGROUND);
+        root.setPadding(dp(22), dp(15), dp(22), dp(12));
 
-        // HEADER
+        scroll.addView(root);
 
-        LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.VERTICAL);
-        header.setPadding(dp(20), dp(15), dp(20), dp(18));
-        header.setBackgroundColor(WHITE);
+        // TOP STATUS INFORMATION
 
-        LinearLayout topRow = new LinearLayout(this);
-        topRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout status = new LinearLayout(this);
+        status.setOrientation(LinearLayout.HORIZONTAL);
+        status.setGravity(Gravity.CENTER_VERTICAL);
 
-        LinearLayout clockBox = new LinearLayout(this);
-        clockBox.setOrientation(LinearLayout.VERTICAL);
+        clock = new TextView(this);
+        clock.setTextColor(WHITE);
+        clock.setTextSize(14);
+        clock.setTypeface(null, Typeface.BOLD);
 
-        timeText = new TextView(this);
-        timeText.setTextColor(BLACK);
-        timeText.setTextSize(30);
-        timeText.setTypeface(null, Typeface.BOLD);
+        battery = new TextView(this);
+        battery.setTextColor(MUTED);
+        battery.setTextSize(12);
+        battery.setGravity(Gravity.END);
 
-        dayText = new TextView(this);
-        dayText.setTextColor(GRAY);
-        dayText.setTextSize(13);
-
-        clockBox.addView(timeText);
-        clockBox.addView(dayText);
-
-        topRow.addView(clockBox,
+        status.addView(clock,
                 new LinearLayout.LayoutParams(0, -2, 1));
 
-        batteryText = new TextView(this);
-        batteryText.setTextColor(BLACK);
-        batteryText.setTextSize(13);
-        batteryText.setGravity(Gravity.CENTER_VERTICAL);
+        status.addView(battery);
 
-        topRow.addView(batteryText);
+        root.addView(status);
 
-        header.addView(topRow);
+        dayDate = new TextView(this);
+        dayDate.setTextColor(MUTED);
+        dayDate.setTextSize(12);
+        dayDate.setPadding(0, dp(5), 0, 0);
 
-        dateText = new TextView(this);
-        dateText.setTextColor(GRAY);
-        dateText.setTextSize(13);
-        dateText.setPadding(0, dp(8), 0, 0);
+        root.addView(dayDate);
 
-        header.addView(dateText);
+        // COREX BRANDING
 
         TextView title = new TextView(this);
         title.setText("CoreX");
-        title.setTextColor(BLACK);
-        title.setTextSize(27);
-        title.setTypeface(null, Typeface.BOLD);
-        title.setPadding(0, dp(20), 0, 0);
+        title.setTextColor(WHITE);
+        title.setTextSize(42);
+        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        title.setPadding(0, dp(35), 0, 0);
 
-        header.addView(title);
+        root.addView(title);
 
-        TextView subtitle = new TextView(this);
-        subtitle.setText("Beyond the Core");
-        subtitle.setTextColor(GRAY);
-        subtitle.setTextSize(13);
+        TextView tagline = new TextView(this);
+        tagline.setText("Beyond the Core");
+        tagline.setTextColor(ACCENT);
+        tagline.setTextSize(14);
+        tagline.setPadding(0, dp(3), 0, dp(25));
 
-        header.addView(subtitle);
+        root.addView(tagline);
 
-        root.addView(header);
-
-        // SEARCH
-
-        LinearLayout searchContainer = new LinearLayout(this);
-        searchContainer.setPadding(
-                dp(15), dp(12), dp(15), dp(5));
+        // SEARCH BAR
 
         searchInput = new EditText(this);
         searchInput.setSingleLine(true);
         searchInput.setTextSize(14);
-        searchInput.setHint("Search applications...");
-        searchInput.setPadding(
-                dp(14), dp(10), dp(14), dp(10));
-        searchInput.setBackground(roundRect(WHITE, 8));
-        searchInput.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
+        searchInput.setTextColor(WHITE);
+        searchInput.setHintTextColor(MUTED);
+        searchInput.setHint("⌕   Search applications...");
+        searchInput.setPadding(dp(16), dp(13), dp(16), dp(13));
+        searchInput.setBackground(rounded(CARD, 14));
 
-        searchContainer.addView(searchInput,
-                new LinearLayout.LayoutParams(-1, dp(46)));
+        root.addView(searchInput,
+                new LinearLayout.LayoutParams(-1, dp(50)));
 
-        root.addView(searchContainer);
-
-        // APPLICATIONS
-
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-
-        LinearLayout content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(12), dp(8), dp(12), dp(12));
+        // APPLICATION HEADING
 
         TextView heading = new TextView(this);
-        heading.setText("Applications");
-        heading.setTextColor(BLACK);
-        heading.setTextSize(18);
-        heading.setTypeface(null, Typeface.BOLD);
-        heading.setPadding(dp(5), dp(10), 0, dp(12));
+        heading.setText("YOUR APPLICATIONS");
+        heading.setTextColor(MUTED);
+        heading.setTextSize(11);
+        heading.setLetterSpacing(0.12f);
+        heading.setPadding(0, dp(30), 0, dp(15));
 
-        content.addView(heading);
+        root.addView(heading);
+
+        // APPLICATION GRID
 
         appGrid = new GridLayout(this);
         appGrid.setColumnCount(3);
-        appGrid.setAlignmentMode(GridLayout.ALIGN_BOUNDS);
+        appGrid.setUseDefaultMargins(false);
 
-        content.addView(appGrid);
-        scroll.addView(content);
+        root.addView(appGrid);
 
-        root.addView(scroll,
-                new LinearLayout.LayoutParams(0, 0, 1));
+        displayApps("");
+
+        searchInput.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(
+                    CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(
+                    CharSequence s, int start, int before, int count) {
+                displayApps(s.toString());
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {}
+        });
 
         // FOOTER
 
-        View divider = new View(this);
-        divider.setBackgroundColor(0xFFE0E0E0);
-
-        root.addView(divider,
-                new LinearLayout.LayoutParams(-1, dp(1)));
-
-        LinearLayout footer = new LinearLayout(this);
-        footer.setOrientation(LinearLayout.VERTICAL);
-        footer.setGravity(Gravity.CENTER);
-        footer.setPadding(dp(8), dp(9), dp(8), dp(9));
-        footer.setBackgroundColor(WHITE);
-
-        TextView credit = new TextView(this);
-        credit.setText(
-                "CoreX OS  |  Genesis 1.0\n" +
+        TextView footer = new TextView(this);
+        footer.setText(
+                "COREX OS  •  BEYOND THE CORE\n\n" +
                 "Developed by Deepak Kumar Sharma"
         );
-        credit.setTextColor(GRAY);
-        credit.setTextSize(11);
-        credit.setGravity(Gravity.CENTER);
 
-        footer.addView(credit);
+        footer.setTextColor(MUTED);
+        footer.setTextSize(11);
+        footer.setGravity(Gravity.CENTER);
+        footer.setPadding(0, dp(30), 0, dp(15));
+
         root.addView(footer);
 
-        setContentView(root);
-
-        renderApps("");
-
-        searchInput.addTextChangedListener(
-                new android.text.TextWatcher() {
-
-                    @Override
-                    public void beforeTextChanged(
-                            CharSequence s, int start,
-                            int count, int after) {
-                    }
-
-                    @Override
-                    public void onTextChanged(
-                            CharSequence s, int start,
-                            int before, int count) {
-                        renderApps(s.toString());
-                    }
-
-                    @Override
-                    public void afterTextChanged(
-                            android.text.Editable s) {
-                    }
-                }
-        );
+        setContentView(scroll);
+        updateInformation();
     }
 
-    // APPLICATION GRID
+    // DISPLAY APPLICATIONS
 
-    private void renderApps(String filter) {
+    private void displayApps(String query) {
 
         appGrid.removeAllViews();
+
+        int count = 0;
 
         for (int i = 0; i < appNames.length; i++) {
 
             final String name = appNames[i];
 
             if (!name.toLowerCase(Locale.ROOT)
-                    .contains(filter.toLowerCase(Locale.ROOT))) {
+                    .contains(query.toLowerCase(Locale.ROOT))) {
                 continue;
             }
 
             LinearLayout item = new LinearLayout(this);
             item.setOrientation(LinearLayout.VERTICAL);
             item.setGravity(Gravity.CENTER);
-            item.setPadding(dp(5), dp(12), dp(5), dp(12));
+            item.setPadding(dp(3), dp(12), dp(3), dp(16));
+            item.setClickable(true);
+            item.setFocusable(true);
 
             TextView icon = new TextView(this);
             icon.setText(appIcons[i]);
             icon.setTextColor(WHITE);
             icon.setTextSize(25);
             icon.setGravity(Gravity.CENTER);
-            icon.setBackground(roundRect(iconColors[i], 12));
+            icon.setBackground(rounded(CARD, 18));
 
             item.addView(icon,
-                    new LinearLayout.LayoutParams(dp(58), dp(58)));
+                    new LinearLayout.LayoutParams(dp(62), dp(62)));
 
             TextView label = new TextView(this);
             label.setText(name);
-            label.setTextColor(BLACK);
+            label.setTextColor(WHITE);
             label.setTextSize(12);
             label.setGravity(Gravity.CENTER);
-            label.setPadding(0, dp(7), 0, 0);
+            label.setPadding(0, dp(9), 0, 0);
 
             item.addView(label);
 
@@ -321,11 +268,20 @@ public class MainActivity extends Activity {
                     new GridLayout.LayoutParams();
 
             params.width = 0;
-            params.height = -2;
-            params.columnSpec = GridLayout.spec(
-                    GridLayout.UNDEFINED, 1f);
+            params.columnSpec =
+                    GridLayout.spec(GridLayout.UNDEFINED, 1f);
 
             appGrid.addView(item, params);
+            count++;
+        }
+
+        if (count == 0) {
+            TextView empty = new TextView(this);
+            empty.setText("No applications found");
+            empty.setTextColor(MUTED);
+            empty.setTextSize(13);
+            empty.setPadding(0, dp(20), 0, dp(20));
+            appGrid.addView(empty);
         }
     }
 
@@ -333,9 +289,9 @@ public class MainActivity extends Activity {
 
     private void openApp(String name) {
 
-        try {
+        Intent intent;
 
-            Intent intent;
+        try {
 
             switch (name) {
 
@@ -356,7 +312,7 @@ public class MainActivity extends Activity {
                 case "Gallery":
                     intent = new Intent(Intent.ACTION_GET_CONTENT);
                     intent.setType("image/*");
-                    intent = Intent.createChooser(intent, "Choose Image");
+                    intent = Intent.createChooser(intent, "Gallery");
                     break;
 
                 case "Settings":
@@ -368,20 +324,30 @@ public class MainActivity extends Activity {
                     intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
                     intent.setType("*/*");
                     intent.addCategory(Intent.CATEGORY_OPENABLE);
-                    intent = Intent.createChooser(intent, "Choose File");
+                    intent = Intent.createChooser(intent, "Files");
                     break;
 
                 case "Browser":
-                    openBrowser();
-                    return;
+                    intent = new Intent(
+                            Intent.ACTION_VIEW,
+                            Uri.parse("https://www.google.com"));
+                    break;
 
                 case "Falcon":
-                    openFalcon();
-                    return;
+                    intent = new Intent(
+                            MainActivity.this,
+                            com.corex.falcon.MainActivity.class);
+                    break;
 
                 case "CoreX AI":
                     openCoreXAI();
                     return;
+
+                case "CoreX Pulse":
+                    intent = new Intent(
+                            MainActivity.this,
+                            com.corex.pulse.PulseActivity.class);
+                    break;
 
                 default:
                     return;
@@ -390,55 +356,13 @@ public class MainActivity extends Activity {
             startActivity(intent);
 
         } catch (ActivityNotFoundException e) {
-
             Toast.makeText(this,
-                    name + " is not available",
+                    name + " is not available on this device",
                     Toast.LENGTH_SHORT).show();
 
         } catch (Exception e) {
-
             Toast.makeText(this,
                     "Unable to open " + name,
-                    Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    // FALCON - SAME APK
-
-    private void openFalcon() {
-
-        try {
-            Intent intent = new Intent(
-                    MainActivity.this,
-                    com.corex.falcon.MainActivity.class
-            );
-
-            startActivity(intent);
-
-        } catch (Exception e) {
-
-            Toast.makeText(this,
-                    "Unable to open Falcon",
-                    Toast.LENGTH_LONG).show();
-        }
-    }
-
-    // BROWSER
-
-    private void openBrowser() {
-
-        try {
-
-            Intent intent = new Intent(
-                    Intent.ACTION_VIEW,
-                    Uri.parse("https://www.google.com"));
-
-            startActivity(intent);
-
-        } catch (Exception e) {
-
-            Toast.makeText(this,
-                    "No browser available",
                     Toast.LENGTH_SHORT).show();
         }
     }
@@ -447,255 +371,107 @@ public class MainActivity extends Activity {
 
     private void openCoreXAI() {
 
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(18), dp(8), dp(18), dp(5));
+        EditText input = new EditText(this);
+        input.setHint("Ask CoreX AI...");
+        input.setTextColor(WHITE);
+        input.setHintTextColor(MUTED);
+        input.setPadding(dp(14), dp(12), dp(14), dp(12));
+        input.setBackground(rounded(CARD, 12));
 
-        TextView description = new TextView(this);
-        description.setText(
-                "Hello! I am CoreX AI.\n\n" +
-                "You can type a command or use voice input."
-        );
-        description.setTextColor(BLACK);
-        description.setTextSize(14);
-
-        box.addView(description);
-
-        EditText commandInput = new EditText(this);
-        commandInput.setHint("Enter your command...");
-        commandInput.setSingleLine(true);
-
-        box.addView(commandInput);
-
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("CoreX AI")
-                .setView(box)
-                .setPositiveButton("Run", null)
-                .setNeutralButton("Voice", null)
-                .setNegativeButton("Close", null)
-                .create();
-
-        dialog.setOnShowListener(v -> {
-
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE)
-                    .setOnClickListener(button -> {
-
-                        String command = commandInput
-                                .getText().toString().trim();
-
-                        if (!command.isEmpty()) {
-                            dialog.dismiss();
-                            executeAICommand(command);
-                        }
-                    });
-
-            dialog.getButton(AlertDialog.BUTTON_NEUTRAL)
-                    .setOnClickListener(button -> {
-
-                        dialog.dismiss();
-                        startVoiceRecognition();
-                    });
-        });
-
-        dialog.show();
-    }
-
-    // VOICE INPUT
-
-    private void startVoiceRecognition() {
-
-        try {
-
-            Intent intent = new Intent(
-                    RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-
-            intent.putExtra(
-                    RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-
-            intent.putExtra(
-                    RecognizerIntent.EXTRA_LANGUAGE,
-                    Locale.getDefault());
-
-            intent.putExtra(
-                    RecognizerIntent.EXTRA_PROMPT,
-                    "Speak your command");
-
-            startActivityForResult(intent, 101);
-
-        } catch (Exception e) {
-
-            Toast.makeText(this,
-                    "Voice recognition is not available",
-                    Toast.LENGTH_LONG).show();
-        }
-    }
-
-    @Override
-    protected void onActivityResult(
-            int requestCode, int resultCode, Intent data) {
-
-        super.onActivityResult(requestCode, resultCode, data);
-
-        if (requestCode == 101 &&
-                resultCode == RESULT_OK &&
-                data != null) {
-
-            ArrayList<String> results =
-                    data.getStringArrayListExtra(
-                            RecognizerIntent.EXTRA_RESULTS);
-
-            if (results != null && !results.isEmpty()) {
-                executeAICommand(results.get(0));
-            }
-        }
-    }
-
-    // AI COMMANDS
-
-    private void executeAICommand(String command) {
-
-        String c = command.toLowerCase(Locale.ROOT);
-
-        if (c.contains("setting")) {
-            openApp("Settings");
-
-        } else if (c.contains("phone") || c.contains("call")) {
-            openApp("Phone");
-
-        } else if (c.contains("message") || c.contains("sms")) {
-            openApp("Messages");
-
-        } else if (c.contains("camera")) {
-            openApp("Camera");
-
-        } else if (c.contains("gallery") || c.contains("photo")) {
-            openApp("Gallery");
-
-        } else if (c.contains("file")) {
-            openApp("Files");
-
-        } else if (c.contains("browser") || c.contains("internet")) {
-            openApp("Browser");
-
-        } else if (c.contains("falcon")) {
-            openApp("Falcon");
-
-        } else if (c.contains("time") || c.contains("samay")) {
-
-            String time = new SimpleDateFormat(
-                    "hh:mm a", Locale.getDefault())
-                    .format(new Date());
-
-            showAIResult("Current time: " + time);
-
-        } else if (c.contains("date") || c.contains("tarikh")) {
-
-            String date = new SimpleDateFormat(
-                    "dd MMMM yyyy", Locale.getDefault())
-                    .format(new Date());
-
-            showAIResult("Today's date: " + date);
-
-        } else if (c.contains("battery")) {
-
-            updateInformation();
-            showAIResult("Battery: " + batteryText.getText());
-
-        } else {
-
-            showAIResult(
-                    "I could not understand this command.\n\n" +
-                    "Try: Open Settings, Open Phone, " +
-                    "Open Camera or What is the time?\n\n" +
-                    "Online AI integration is not available yet."
-            );
-        }
-    }
-
-    private void showAIResult(String message) {
+        LinearLayout layout = new LinearLayout(this);
+        layout.setPadding(dp(20), dp(10), dp(20), dp(10));
+        layout.addView(input);
 
         new AlertDialog.Builder(this)
                 .setTitle("CoreX AI")
-                .setMessage(message)
-                .setPositiveButton("OK", null)
+                .setMessage("Your intelligent assistant")
+                .setView(layout)
+                .setNegativeButton("Close", null)
+                .setPositiveButton("Ask", (dialog, which) -> {
+
+                    String question =
+                            input.getText().toString().trim();
+
+                    if (question.isEmpty()) return;
+
+                    String answer;
+
+                    if (question.toLowerCase().contains("time")) {
+                        answer = new SimpleDateFormat(
+                                "hh:mm a", Locale.getDefault())
+                                .format(new Date());
+
+                    } else if (question.toLowerCase().contains("date")) {
+                        answer = new SimpleDateFormat(
+                                "EEEE, dd MMMM yyyy",
+                                Locale.getDefault()).format(new Date());
+
+                    } else if (question.toLowerCase().contains("hello")) {
+                        answer = "Hello! Welcome to CoreX.";
+
+                    } else {
+                        answer = "CoreX AI assistant is currently running in local mode.";
+                    }
+
+                    new AlertDialog.Builder(this)
+                            .setTitle("CoreX AI")
+                            .setMessage(answer)
+                            .setPositiveButton("OK", null)
+                            .show();
+                })
                 .show();
     }
 
-    // LIVE TIME, DATE AND BATTERY
+    // LIVE CLOCK AND BATTERY
 
     private void updateInformation() {
 
         Date now = new Date();
 
-        if (timeText != null) {
-            timeText.setText(
-                    new SimpleDateFormat(
-                            "hh:mm a",
-                            Locale.getDefault()).format(now)
-            );
-        }
+        clock.setText(
+                new SimpleDateFormat(
+                        "hh:mm:ss a", Locale.getDefault())
+                        .format(now));
 
-        if (dayText != null) {
-            dayText.setText(
-                    new SimpleDateFormat(
-                            "EEEE",
-                            Locale.getDefault()).format(now)
-            );
-        }
+        dayDate.setText(
+                new SimpleDateFormat(
+                        "EEEE  •  dd MMMM yyyy",
+                        Locale.getDefault())
+                        .format(now));
 
-        if (dateText != null) {
-            dateText.setText(
-                    new SimpleDateFormat(
-                            "dd MMMM yyyy",
-                            Locale.getDefault()).format(now)
-            );
-        }
-
-        Intent status = registerReceiver(
+        Intent batteryIntent = registerReceiver(
                 null,
-                new android.content.IntentFilter(
-                        Intent.ACTION_BATTERY_CHANGED)
-        );
+                new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
 
-        if (status != null && batteryText != null) {
+        if (batteryIntent != null) {
 
-            int level = status.getIntExtra(
+            int level = batteryIntent.getIntExtra(
                     BatteryManager.EXTRA_LEVEL, -1);
 
-            int scale = status.getIntExtra(
+            int scale = batteryIntent.getIntExtra(
                     BatteryManager.EXTRA_SCALE, -1);
 
-            int batteryStatus = status.getIntExtra(
+            int status = batteryIntent.getIntExtra(
                     BatteryManager.EXTRA_STATUS, -1);
 
-            if (level >= 0 && scale > 0) {
+            int percentage = (level >= 0 && scale > 0)
+                    ? (level * 100 / scale) : 0;
 
-                int percentage = level * 100 / scale;
+            boolean charging =
+                    status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                    status == BatteryManager.BATTERY_STATUS_FULL;
 
-                boolean charging =
-                        batteryStatus == BatteryManager.BATTERY_STATUS_CHARGING ||
-                        batteryStatus == BatteryManager.BATTERY_STATUS_FULL;
-
-                String batteryInfo = percentage + "%";
-
-                if (charging) {
-                    batteryInfo += "  ⚡ Charging";
-                }
-
-                batteryText.setText(batteryInfo);
-            }
+            battery.setText(
+                    "▣ " + percentage + "%" +
+                    (charging ? "  ⚡ Charging" : ""));
         }
     }
 
-    // SIMPLE ROUNDED BACKGROUND
+    // DESIGN HELPERS
 
-    private GradientDrawable roundRect(
-            int color, int radius) {
+    private GradientDrawable rounded(int color, int radius) {
 
-        GradientDrawable drawable =
-                new GradientDrawable();
-
+        GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(color);
         drawable.setCornerRadius(dp(radius));
 
@@ -703,9 +479,13 @@ public class MainActivity extends Activity {
     }
 
     private int dp(int value) {
+        return (int) (value *
+                getResources().getDisplayMetrics().density);
+    }
 
-        return (int) (
-                value * getResources()
-                        .getDisplayMetrics().density + 0.5f);
+    @Override
+    protected void onDestroy() {
+        handler.removeCallbacks(clockRunnable);
+        super.onDestroy();
     }
 }

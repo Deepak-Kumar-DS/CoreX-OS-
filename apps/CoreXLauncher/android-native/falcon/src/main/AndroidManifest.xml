@@ -5,12 +5,20 @@
 
     <application
         android:allowBackup="false"
-        android:label="Falcon"
+        android:label="CoreX"
         android:supportsRtl="true"
-        android:theme="@style/FalconTheme">
+        android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
         <activity
-            android:name=".MainActivity"
+            android:name="com.corex.falcon.VaultActivity"
+            android:exported="false" />
+
+        <activity
+            android:name="com.corex.falcon.MainActivity"
+            android:exported="false" />
+
+        <activity
+            android:name="com.corex.launcher.MainActivity"
             android:exported="true">
 
             <intent-filter>
@@ -18,8 +26,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-        </activity>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
 
+        </activity>
     </application>
 
 </manifest>
