@@ -82,3 +82,5 @@ CoreX OS aims to put intelligence, privacy, customization and user control at th
 **COREX OS — Beyond the Core.**
 
 install this APK, and enjoy my own OS.
+
+This isn't full APK
